@@ -115,3 +115,22 @@ export function BuildingArt({ className }: { className?: string }) {
     </svg>
   )
 }
+
+// ===== 等级勋章 =====
+export function Medal({ level, size = 20 }: { level: string; size?: number }) {
+  const colors: Record<string, string> = {
+    gold: '#c9a227',
+    silver: '#8a98a3',
+    bronze: '#b07d3e',
+    new: '#9aa8a0',
+  }
+  const color = colors[level] || colors.new
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M8 3h8l1 6-5 3-5-3z" fill={color} />
+      <circle cx="12" cy="14" r="6" fill={color} />
+      <circle cx="12" cy="14" r="3.5" fill="#fff" opacity="0.25" />
+      <path d="M12 11.5l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z" fill="#fff" />
+    </svg>
+  )
+}

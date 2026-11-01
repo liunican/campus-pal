@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppState } from './domain'
 import { act, seed } from './domain'
+import type { Lang } from './translations'
+import { setLang as setCurrentLang } from './translations'
 
-const STORAGE_KEY = 'campuspal_demo_v3'
+const STORAGE_KEY = 'campuspal_demo_v7'
 
 function load(): AppState {
   try {
@@ -83,7 +85,41 @@ export function useAppStore() {
     setState(seed())
   }, [])
 
+  const markRead = useCallback((id: string) => {
+    setState((prev) => {
+      const next = structuredClone(prev)
+      const n = next.notifications.find((x) => x.id === id)
+      if (n) n.read = true
+      return next
+    })
+  }, [])
+
+  const markAllRead = useCallback(() => {
+    setState((prev) => {
+      const next = structuredClone(prev)
+      next.notifications.forEach((n) => {
+        if (n.userId === prev.user) n.read = true
+      })
+      return next
+    })
+  }, [])
+
   const currentUser = state.users.find((u) => u.id === state.user)!
 
-  return { state, currentUser, toast, dispatch, setUser, setNow, reset }
+  const [lang, setLang] = useState<Lang>(() => {
+    const init = (localStorage.getItem('campuspal_lang') as Lang) || 'zh'
+    setCurrentLang(init)
+    return init
+  })
+
+  const toggleLang = useCallback(() => {
+    setLang((prev) => {
+      const next = prev === 'zh' ? 'en' : 'zh'
+      localStorage.setItem('campuspal_lang', next)
+      setCurrentLang(next)
+      return next
+    })
+  }, [])
+
+  return { state, currentUser, toast, dispatch, setUser, setNow, reset, markRead, markAllRead, lang, toggleLang }
 }

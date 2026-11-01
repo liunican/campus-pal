@@ -1,0 +1,133 @@
+export type Lang = 'zh' | 'en'
+
+const zh: Record<string, string> = {
+  // 导航
+  'nav.hall': '任务大厅',
+  'nav.publish': '发布任务',
+  'nav.orders': '我的订单',
+  'nav.card': '我的卡',
+  'nav.admin': '平台工作台',
+  'nav.messages': '消息通知',
+  // 状态
+  'status.open': '等待接单',
+  'status.accepted': '履约中',
+  'status.delivered': '待确认收货',
+  'status.disputed': '纠纷处理中',
+  'status.done': '已完成',
+  'status.cancelled': '已退款',
+  // 任务类型
+  'kind.快递代取': '快递代取',
+  'kind.餐食代买': '餐食代买',
+  'kind.打印代取': '打印代取',
+  'kind.校内送物': '校内送物',
+  'kind.占座': '占座',
+  // 顶部
+  'top.campus': '演示校区',
+  'top.myCard': '我的卡',
+  'top.messages': '消息',
+  'top.switchRole': '切换演示身份',
+  // 大厅
+  'hall.kicker': 'A LITTLE HELP, A BETTER CAMPUS',
+  'hall.title': '今天，也顺路帮个忙。',
+  'hall.sub': '从驿站到宿舍，从食堂到自习室，让同校的善意顺路抵达。',
+  'hall.postTask': '发布任务',
+  'hall.heroTag': '港大互助 · 安心托付',
+  'hall.heroTitle': '你的举手之劳，是另一个人的刚刚好。',
+  'hall.heroSub': '发一个小任务，遇见顺路的同学。学生卡有核验，交付有记录，每一份付出都有回应。',
+  'hall.trust1': '学生卡核验',
+  'hall.trust2': '先付款后结算',
+  'hall.trust3': '信用可积累',
+  'hall.discover': '发现顺路任务',
+  'hall.sortRoute': '顺路优先',
+  'hall.sortPrice': '价格',
+  'hall.search': '搜索任务、地点',
+  'hall.empty': '暂时没有匹配的任务',
+  'hall.remaining': '剩 {n} 分钟',
+  'hall.onRoute': '顺路 · {d}',
+  // 按钮
+  'btn.accept': '我来帮忙 · 接下任务',
+  'btn.deliver': '提交交付凭证',
+  'btn.confirm': '确认收货并结算',
+  'btn.review': '评价这次互助',
+  'btn.dispute': '遇到问题 · 发起申诉',
+  'btn.cancel': '取消任务并退款',
+  'btn.reviewTa': '评价 TA',
+  'btn.report': '举报',
+  'btn.block': '拉黑',
+  'btn.blocked': '已拉黑',
+  'btn.submitReview': '提交评价',
+  'btn.submit': '提交',
+  // 通用
+  'common.budget': '商品预算',
+  'common.large': '大额协议',
+  'common.smallItem': '小件顺路',
+  'common.reset': '重置演示',
+}
+
+const en: Record<string, string> = {
+  'nav.hall': 'Task Hall',
+  'nav.publish': 'Post Task',
+  'nav.orders': 'My Orders',
+  'nav.card': 'My Card',
+  'nav.admin': 'Admin Console',
+  'nav.messages': 'Notifications',
+  'status.open': 'Open',
+  'status.accepted': 'In Progress',
+  'status.delivered': 'Delivered',
+  'status.disputed': 'Disputed',
+  'status.done': 'Completed',
+  'status.cancelled': 'Refunded',
+  'kind.快递代取': 'Package Pickup',
+  'kind.餐食代买': 'Food Run',
+  'kind.打印代取': 'Print Pickup',
+  'kind.校内送物': 'Campus Delivery',
+  'kind.占座': 'Seat Reservation',
+  'top.campus': 'Demo Campus',
+  'top.myCard': 'My Card',
+  'top.messages': 'Messages',
+  'top.switchRole': 'Switch demo role',
+  'hall.kicker': 'A LITTLE HELP, A BETTER CAMPUS',
+  'hall.title': 'Lend a hand along your way today.',
+  'hall.sub': 'From the station to the dorm, from the canteen to the library — let campus goodwill arrive along the way.',
+  'hall.postTask': 'Post a Task',
+  'hall.heroTag': 'HKU Help · Trust & Care',
+  'hall.heroTitle': 'A small favor from you, a big help to someone.',
+  'hall.heroSub': 'Post a small task and meet a fellow student along the way. Verified student card, recorded delivery, every effort answered.',
+  'hall.trust1': 'Card Verified',
+  'hall.trust2': 'Pay First, Settle Later',
+  'hall.trust3': 'Build Credit',
+  'hall.discover': 'Discover tasks',
+  'hall.sortRoute': 'Nearest',
+  'hall.sortPrice': 'Price',
+  'hall.search': 'Search tasks, places',
+  'hall.empty': 'No matching tasks',
+  'hall.remaining': '{n} min left',
+  'hall.onRoute': 'On route · {d}',
+  'btn.accept': 'Help · Take this task',
+  'btn.deliver': 'Submit proof',
+  'btn.confirm': 'Confirm & settle',
+  'btn.review': 'Review this help',
+  'btn.dispute': 'Issue · Dispute',
+  'btn.cancel': 'Cancel & refund',
+  'btn.reviewTa': 'Review',
+  'btn.report': 'Report',
+  'btn.block': 'Block',
+  'btn.blocked': 'Blocked',
+  'btn.submitReview': 'Submit review',
+  'btn.submit': 'Submit',
+  'common.budget': 'Budget',
+  'common.large': 'Large item',
+  'common.smallItem': 'Small item',
+  'common.reset': 'Reset demo',
+}
+
+let currentLang: Lang = 'zh'
+
+export function setLang(l: Lang) {
+  currentLang = l
+}
+
+export function t(key: string): string {
+  const table = currentLang === 'en' ? en : zh
+  return table[key] ?? zh[key] ?? key
+}

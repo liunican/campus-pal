@@ -1,50 +1,55 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Task, TaskStatus, User } from './domain'
 import {
+  DORMITORIES,
   LANDMARKS,
   LARGE_LIMIT,
+  REVIEW_TAGS,
   SCHOOL,
   SCHOOL_EN,
   closed,
   creditProfile,
+  distance,
   eligibility,
   graduation,
   money,
   time,
 } from './domain'
 import { useAppStore } from './store'
-import { Icon, KIND_ICON, Crest, BuildingArt } from './icons'
+import { Icon, KIND_ICON, Crest, BuildingArt, Medal } from './icons'
+import { t } from './translations'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 
-type View = 'hall' | 'publish' | 'orders' | 'card' | 'admin'
+type View = 'hall' | 'publish' | 'orders' | 'card' | 'admin' | 'messages'
 
 const NAV: { key: View; label: string; icon: string; desktop?: boolean }[] = [
-  { key: 'hall', label: '任务大厅', icon: 'grid' },
-  { key: 'publish', label: '发布任务', icon: 'plus' },
-  { key: 'orders', label: '我的订单', icon: 'list' },
-  { key: 'card', label: '我的卡', icon: 'shield' },
-  { key: 'admin', label: '平台工作台', icon: 'user', desktop: true },
+  { key: 'hall', label: 'nav.hall', icon: 'grid' },
+  { key: 'publish', label: 'nav.publish', icon: 'plus' },
+  { key: 'orders', label: 'nav.orders', icon: 'list' },
+  { key: 'card', label: 'nav.card', icon: 'shield' },
+  { key: 'admin', label: 'nav.admin', icon: 'user', desktop: true },
 ]
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
-  open: '等待接单',
-  accepted: '履约中',
-  delivered: '待确认收货',
-  disputed: '纠纷处理中',
-  done: '已完成',
-  cancelled: '已退款',
+  open: 'status.open',
+  accepted: 'status.accepted',
+  delivered: 'status.delivered',
+  disputed: 'status.disputed',
+  done: 'status.done',
+  cancelled: 'status.cancelled',
 }
 
 export default function App() {
-  const { state, currentUser, toast, dispatch, setUser, setNow, reset } = useAppStore()
+  const { state, currentUser, toast, dispatch, setUser, setNow, reset, markRead, markAllRead, lang, toggleLang } = useAppStore()
   const [view, setView] = useState<View>('hall')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [modal, setModal] = useState<React.ReactNode | null>(null)
 
   const detail = useMemo(() => state.tasks.find((t) => t.id === detailId) ?? null, [state.tasks, detailId])
   const g = graduation(currentUser, state.now)
+  const unreadCount = state.notifications.filter((n) => n.userId === currentUser.id && !n.read).length
 
   return (
     <div className="app">
@@ -66,7 +71,7 @@ export default function App() {
               onClick={() => setView(n.key)}
             >
               <Icon name={n.icon} />
-              <span>{n.label}</span>
+              <span>{t(n.label)}</span>
             </a>
           ))}
         </nav>
@@ -83,10 +88,15 @@ export default function App() {
       <div className="main">
         <header className="topbar">
           <div className="school">
-            <Icon name="pin" size={18} /> {SCHOOL} <span>演示校区</span>
+            <Icon name="pin" size={18} /> {lang === 'en' ? 'HKU' : SCHOOL} <span>{t('top.campus')}</span>
           </div>
           <div className="profile">
-            <a className="muted" onClick={() => setView('card')}>我的卡</a>
+            <a className="muted" onClick={() => setView('card')}>{t('top.myCard')}</a>
+            <button className="lang-btn" onClick={toggleLang} aria-label="切换语言">{lang === 'zh' ? 'EN' : '中文'}</button>
+            <button className={'bell' + (view === 'messages' ? ' active' : '')} onClick={() => setView('messages')} aria-label="消息通知">
+              <Icon name="chat" size={20} />
+              {unreadCount > 0 && <span className="bell-badge">{unreadCount}</span>}
+            </button>
             <div className="avatar">{currentUser.avatar}</div>
             <select value={state.user} onChange={(e) => setUser(e.target.value)} aria-label="切换演示身份">
               {state.users.map((u) => (
@@ -115,6 +125,7 @@ export default function App() {
           {view === 'orders' && <Orders state={state} currentUser={currentUser} onOpen={setDetailId} />}
           {view === 'card' && <Card state={state} currentUser={currentUser} dispatch={dispatch} onOpen={setDetailId} onView={setView} />}
           {view === 'admin' && <Admin state={state} dispatch={dispatch} setNow={setNow} onOpen={setDetailId} setModal={setModal} />}
+          {view === 'messages' && <Messages state={state} currentUser={currentUser} markRead={markRead} markAllRead={markAllRead} />}
 
           <footer className="page-footer">
             信用为凭，同窗互助 · CAMPUSPAL © 2026 · <button onClick={() => setModal(resetModal(reset))}>重置演示</button>
@@ -126,7 +137,7 @@ export default function App() {
         {NAV.filter((n) => !n.desktop).map((n) => (
           <button key={n.key} className={'tab' + (view === n.key ? ' active' : '')} onClick={() => setView(n.key)}>
             <Icon name={n.icon} size={22} />
-            <span>{n.label}</span>
+            <span>{t(n.label)}</span>
           </button>
         ))}
       </nav>
@@ -145,7 +156,7 @@ export default function App() {
 
       {modal && (
         <div className="overlay" onClick={() => setModal(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>{modal}</div>
+          <div className="modal" onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).closest('.modal-close')) setModal(null) }}>{modal}</div>
         </div>
       )}
 
@@ -207,10 +218,10 @@ function StudentCard({ user, full = false }: { user: User; full?: boolean }) {
         </div>
       </div>
       <div className="sc-credit">
-        <span className="sc-level">{cp.levelLabel}</span>
+        <span className="sc-level"><Medal level={cp.level} size={16} /> {cp.levelLabel}</span>
         <span>★ {cp.avgRating ?? '—'}</span>
-        <span>{cp.completed} 单</span>
-        <span>准时 {cp.onTimeRate ?? '—'}%</span>
+        <span>好评 {cp.goodRate ?? '—'}%</span>
+        <span>{cp.completed} 单 · 准时 {cp.onTimeRate ?? '—'}%</span>
       </div>
       <div className="sc-footer">
         <span>有效期至 {fmtDay(user.validUntil)}</span>
@@ -229,7 +240,7 @@ function MiniCard({ user }: { user: User }) {
         <strong>{user.name}{user.cert === 'approved' && <i className="verified">✓</i>}</strong>
         <span>{user.faculty} · {cp.levelLabel}</span>
       </div>
-      <span className="mc-credit">★ {cp.avgRating ?? '—'} · {cp.completed} 单</span>
+      <span className="mc-credit"><Medal level={cp.level} size={16} /> ★ {cp.avgRating ?? '—'}</span>
     </div>
   )
 }
@@ -238,26 +249,34 @@ function MiniCard({ user }: { user: User }) {
 function Hall({ state, currentUser, onOpen, onView }: any) {
   const [filter, setFilter] = useState<string>('全部')
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<'顺路' | '价格'>('顺路')
+  const myDorm = DORMITORIES.find((d) => d.name === currentUser.dormitory)
   const open = state.tasks.filter((t: Task) => t.status === 'open' && time(t.due) > time(state.now))
   const mine = state.tasks.filter((t: Task) => (t.owner === state.user || t.runner === state.user) && !closed(t) && t.status !== 'open')
   const done = state.tasks.filter((t: Task) => (t.owner === state.user || t.runner === state.user) && t.status === 'done')
-  const shown = open.filter((t: Task) => (filter === '全部' || t.kind === filter) && `${t.title}${t.from}${t.to}`.includes(query))
+  const withDist: { t: Task; dist: number }[] = open.map((t: Task) => ({
+    t,
+    dist: myDorm ? distance(myDorm.lat, myDorm.lng, t.toLat, t.toLng) : Number.MAX_SAFE_INTEGER,
+  }))
+  const shown = withDist
+    .filter(({ t }) => (filter === '全部' || t.kind === filter) && `${t.title}${t.from}${t.to}`.includes(query))
+    .sort((a, b) => (sort === '顺路' ? a.dist - b.dist : b.t.fee - a.t.fee))
 
   return (
     <>
-      {pageHead('A LITTLE HELP, A BETTER CAMPUS', '今天，也顺路帮个忙。', '从驿站到宿舍，从食堂到自习室，让同校的善意顺路抵达。', <Btn onClick={() => onView('publish')}><Icon name="plus" size={17} /> 发布任务</Btn>)}
+      {pageHead(t('hall.kicker'), t('hall.title'), t('hall.sub'), <Btn onClick={() => onView('publish')}><Icon name="plus" size={17} /> {t('hall.postTask')}</Btn>)}
 
       <MiniCard user={currentUser} />
 
       <section className="hero">
         <div>
-          <span className="hero-tag">港大互助 · 安心托付</span>
-          <h2>你的举手之劳，<br />是另一个人的刚刚好。</h2>
-          <p>发一个小任务，遇见顺路的同学。<br />学生卡有核验，交付有记录，每一份付出都有回应。</p>
+          <span className="hero-tag">{t('hall.heroTag')}</span>
+          <h2>{t('hall.heroTitle')}</h2>
+          <p>{t('hall.heroSub')}</p>
           <div className="hero-trust">
-            <span><Icon name="shield" size={14} /> 学生卡核验</span>
-            <span><Icon name="wallet" size={14} /> 先付款后结算</span>
-            <span><Icon name="check" size={14} /> 信用可积累</span>
+            <span><Icon name="shield" size={14} /> {t('hall.trust1')}</span>
+            <span><Icon name="wallet" size={14} /> {t('hall.trust2')}</span>
+            <span><Icon name="check" size={14} /> {t('hall.trust3')}</span>
           </div>
         </div>
         <BuildingArt className="hero-building" />
@@ -272,16 +291,20 @@ function Hall({ state, currentUser, onOpen, onView }: any) {
       <div className="workspace">
         <section>
           <div className="section-header">
-            <h2>发现顺路任务 <small>全部来自演示校园</small></h2>
+            <h2>{t('hall.discover')} <small>{t('top.campus')}</small></h2>
             <label className="search"><Icon name="search" size={15} /><input placeholder="搜索任务、地点" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
           </div>
           <div className="filters">
             {['全部', '快递代取', '餐食代买', '打印代取', '校内送物', '占座'].map((c) => (
               <button key={c} className={'chip' + (filter === c ? ' active' : '')} onClick={() => setFilter(c)}>{c}</button>
             ))}
+            <span className="sort-sep" />
+            {(['顺路', '价格'] as const).map((s) => (
+              <button key={s} className={'chip sort' + (sort === s ? ' active' : '')} onClick={() => setSort(s)}>{s === '顺路' ? t('hall.sortRoute') : t('hall.sortPrice')}</button>
+            ))}
           </div>
           <div className="cards">
-            {shown.map((t: Task) => <TaskCard key={t.id} task={t} state={state} onOpen={onOpen} />)}
+            {shown.map(({ t, dist }) => <TaskCard key={t.id} task={t} state={state} onOpen={onOpen} dist={dist} />)}
             {shown.length === 0 && empty('暂时没有匹配的任务', '换个分类，或发布你的第一份校园小任务。')}
           </div>
         </section>
@@ -318,12 +341,14 @@ function empty(title: string, sub: string) {
   return <div className="empty"><h3>{title}</h3><p>{sub}</p></div>
 }
 
-function TaskCard({ task, state, onOpen }: { task: Task; state: AppState; onOpen: (id: string) => void }) {
+function TaskCard({ task, state, onOpen, dist }: { task: Task; state: AppState; onOpen: (id: string) => void; dist?: number }) {
   const owner = who(state, task.owner)
+  const remainMin = Math.max(0, Math.round((time(task.due) - time(state.now)) / 60000))
+  const distLabel = dist !== undefined && dist < 1500 ? (dist < 1000 ? dist + 'm' : (dist / 1000).toFixed(1) + 'km') : null
   return (
     <article className="task-card" onClick={() => onOpen(task.id)}>
       <div className="card-top">
-        <span className="category"><i><Icon name={KIND_ICON[task.kind]} size={18} /></i>{task.kind}</span>
+        <span className="category"><i><Icon name={KIND_ICON[task.kind]} size={18} /></i>{t('kind.' + task.kind)}</span>
         <span className="reward"><small>¥</small>{money(task.fee)}</span>
       </div>
       <h3>{task.title}</h3>
@@ -332,9 +357,11 @@ function TaskCard({ task, state, onOpen }: { task: Task; state: AppState; onOpen
         <span><i className="dot end" />{task.to}</span>
       </div>
       <div className="tags">
-        <Badge>{STATUS_LABEL[task.status]}</Badge>
-        {task.budget ? <Badge tone="amber">商品预算 ¥{money(task.budget)}</Badge> : <Badge>小件顺路</Badge>}
-        {Math.max(task.value, task.budget) >= LARGE_LIMIT && <Badge tone="amber">大额协议</Badge>}
+        <Badge>{t(STATUS_LABEL[task.status])}</Badge>
+        {distLabel && <Badge tone="green">{t('hall.onRoute').replace('{d}', distLabel)}</Badge>}
+        {task.budget ? <Badge tone="amber">{t('common.budget')} ¥{money(task.budget)}</Badge> : <Badge>{t('common.smallItem')}</Badge>}
+        {Math.max(task.value, task.budget) >= LARGE_LIMIT && <Badge tone="amber">{t('common.large')}</Badge>}
+        {remainMin > 0 && remainMin <= 30 && <Badge tone="red">{t('hall.remaining').replace('{n}', String(remainMin))}</Badge>}
       </div>
       <div className="card-footer">
         <span className="person"><span className="avatar">{owner.avatar}</span>{owner.name}<br />{fmtTime(task.due)} 前</span>
@@ -511,7 +538,7 @@ function Card({ state, currentUser, dispatch, onOpen, onView }: any) {
               <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('submitCert', '', { card: !!d.get('card') }); }}>
                 <label className="check"><input type="checkbox" name="card" required />确认学生卡信息：{currentUser.name} · {currentUser.studentId} · {currentUser.faculty}{currentUser.major ? ' · ' + currentUser.major : ''}</label>
                 <div className="actions">
-                  <Btn disabled={currentUser.cert === 'approved'}>{currentUser.cert === 'approved' ? '已认证' : '提交审核'}</Btn>
+                  <Btn disabled={currentUser.cert === 'approved'} type="submit">{currentUser.cert === 'approved' ? '已认证' : '提交审核'}</Btn>
                   <Btn kind="secondary" onClick={() => onView('orders')}>处理已有订单</Btn>
                 </div>
               </form>
@@ -533,6 +560,7 @@ function Card({ state, currentUser, dispatch, onOpen, onView }: any) {
             {currentUser.reviews.map((r: any, i: number) => (
               <div key={i} className="review">
                 <b>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.fromName}</b>
+                {r.tags?.length > 0 && <div className="review-tags">{r.tags.map((t: string) => <span key={t} className="review-tag">{t}</span>)}</div>}
                 <p>{r.text}</p>
               </div>
             ))}
@@ -588,9 +616,25 @@ function Admin({ state, dispatch, setNow, onOpen }: any) {
   const disputes = state.tasks.filter((t: Task) => t.status === 'disputed')
   const reports = state.reports
   const deliverers = state.users.filter((u: User) => u.id !== 'admin')
+  const totalTasks = state.tasks.length
+  const doneTasks = state.tasks.filter((t: Task) => t.status === 'done').length
+  const totalEarned = state.ledger.filter((l: any) => l.type === '跑腿收入').reduce((a: number, l: any) => a + l.amount, 0)
+  const completionRate = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0
+  const disputeRate = totalTasks ? Math.round((disputes.length / totalTasks) * 100) : 0
   return (
     <>
       {pageHead('CAMPUS SUPPORT', '每一份信任，都认真回应。', '审核与裁决均为演示操作，不会查验真实身份或移动真实资金。')}
+
+      <div className="stats">
+        {stat('平台订单', totalTasks, 'list')}
+        {stat('完成率', completionRate + '%', 'check')}
+        {stat('纠纷率', disputeRate + '%', 'chat')}
+      </div>
+      <div className="stats">
+        {stat('注册学生', deliverers.length, 'user')}
+        {stat('累计跑腿收入', money(totalEarned), 'wallet')}
+        {stat('待审核认证', pending.length, 'shield')}
+      </div>
       <div className="panel">
         <h3>场景时钟</h3>
         <form className="actions" onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); setNow(String(d.get('date'))); }}>
@@ -654,6 +698,35 @@ function Admin({ state, dispatch, setNow, onOpen }: any) {
   )
 }
 
+// ===== 消息通知 =====
+function Messages({ state, currentUser, markRead, markAllRead }: any) {
+  const myNotifs = state.notifications.filter((n: any) => n.userId === currentUser.id).slice().reverse()
+  return (
+    <>
+      {pageHead('NOTIFICATIONS', '消息通知', '接单、交付、结算、评价的动态，都在这里。')}
+      <div className="panel">
+        <div className="msg-head">
+          <h3>全部通知</h3>
+          <Btn kind="secondary" onClick={markAllRead}>全部已读</Btn>
+        </div>
+        {myNotifs.length === 0 ? (
+          <p className="muted">还没有通知。接单或收到评价后，这里会提醒你。</p>
+        ) : (
+          <div className="msg-list">
+            {myNotifs.map((n: any) => (
+              <div key={n.id} className={'msg' + (n.read ? '' : ' unread')} onClick={() => markRead(n.id)}>
+                <span className="msg-dot" />
+                <p>{n.text}</p>
+                <small>{fmtTime(n.date)}</small>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 // ===== 任务详情（modal） =====
 function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onView }: any) {
   const owner = who(state, task.owner)
@@ -668,19 +741,19 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
 
   let actions: React.ReactNode = null
   if (task.status === 'open') actions = isOwner
-    ? <Btn kind="secondary" onClick={() => setModal(confirmModal('取消这份未接单任务？', `¥${money(task.fee + task.budget)} 模拟预付款将全部退回。`, () => dispatch('cancel', task.id)))}>取消任务并退款</Btn>
-    : currentUser.id === 'admin' ? null : (err ? <div className="notice">{err} · <a onClick={onView ? () => { onClose(); onView('card'); } : undefined}>去认证</a></div> : <Btn onClick={() => setModal(acceptModal(task, dispatch))}>我来帮忙 · 接下任务</Btn>)
-  if (task.status === 'accepted' && isRunner) actions = <Btn onClick={() => setModal(deliverModal(task, dispatch))}>提交交付凭证</Btn>
-  if (task.status === 'delivered' && isOwner) actions = <Btn onClick={() => setModal(confirmModal('确认收到物品并结算？', `接单者跑腿收入 ¥${money(task.fee)} · 返还垫付款 ¥${money(task.actual)} · 退回预算差额 ¥${money(task.budget - task.actual)}`, () => dispatch('confirm', task.id)))}>确认收货并结算</Btn>
-  if (['accepted', 'delivered'].includes(task.status) && (isOwner || isRunner)) actions = <Btn kind="secondary" onClick={() => setModal(disputeModal(task, dispatch))}>遇到问题 · 发起申诉</Btn>
-  if (task.status === 'disputed' && currentUser.id === 'admin') actions = <Btn onClick={() => setModal(resolveModal(task, dispatch))}>处理纠纷</Btn>
-  if (task.status === 'done' && (isOwner || isRunner) && !task.reviews[currentUser.id]) actions = <Btn kind="soft" onClick={() => setModal(reviewModal(task, dispatch))}>评价这次互助</Btn>
+    ? <Btn kind="secondary" onClick={() => setModal(confirmModal('取消这份未接单任务？', `¥${money(task.fee + task.budget)} 模拟预付款将全部退回。`, () => dispatch('cancel', task.id), setModal))}>取消任务并退款</Btn>
+    : currentUser.id === 'admin' ? null : (err ? <div className="notice">{err} · <a onClick={onView ? () => { onClose(); onView('card'); } : undefined}>去认证</a></div> : <Btn onClick={() => setModal(acceptModal(task, dispatch, setModal))}>我来帮忙 · 接下任务</Btn>)
+  if (task.status === 'accepted' && isRunner) actions = <Btn onClick={() => setModal(deliverModal(task, dispatch, setModal))}>提交交付凭证</Btn>
+  if (task.status === 'delivered' && isOwner) actions = <Btn onClick={() => setModal(confirmModal('确认收到物品并结算？', `接单者跑腿收入 ¥${money(task.fee)} · 返还垫付款 ¥${money(task.actual)} · 退回预算差额 ¥${money(task.budget - task.actual)}`, () => dispatch('confirm', task.id), setModal))}>确认收货并结算</Btn>
+  if (['accepted', 'delivered'].includes(task.status) && (isOwner || isRunner)) actions = <>{actions}<Btn kind="secondary" onClick={() => setModal(disputeModal(task, dispatch, setModal))}>遇到问题 · 发起申诉</Btn></>
+  if (task.status === 'disputed' && currentUser.id === 'admin') actions = <Btn onClick={() => setModal(resolveModal(task, dispatch, setModal))}>处理纠纷</Btn>
+  if (task.status === 'done' && (isOwner || isRunner) && !task.reviews[currentUser.id]) actions = <Btn kind="soft" onClick={() => setModal(reviewModal(task, dispatch, setModal))}>评价这次互助</Btn>
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <button className="sheet-close" onClick={onClose}>×</button>
-        {pageHead('TASK / ' + task.id.toUpperCase(), task.title, `${task.kind} · ${owner.name}发布 · 截止 ${fmtTime(task.due)}`, <Badge tone={task.status === 'disputed' ? 'red' : ''}>{STATUS_LABEL[task.status as TaskStatus]}</Badge>)}
+        {pageHead('TASK / ' + task.id.toUpperCase(), task.title, `${task.kind} · ${owner.name}发布 · 截止 ${fmtTime(task.due)}`, <Badge tone={task.status === 'disputed' ? 'red' : ''}>{t(STATUS_LABEL[task.status as TaskStatus])}</Badge>)}
 
         <div className="steps">
           {steps.map((s, i) => (
@@ -701,6 +774,7 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
               <p className="task-note">{task.note || '暂无补充说明'}</p>
               {full && <div className="notice">大额物品：发单者已确认协议{task.runnerAgreement ? '，接单者也已确认' : ''}。<button onClick={() => setModal(agreementModal())}>查看责任约定 →</button></div>}
               <div className="actions">{actions}</div>
+              {task.status === 'delivered' && isRunner && <div className="guide">已通知发布者确认收货。请在右上角切换为发布者身份，完成「确认收货并结算」。</div>}
               {!member && task.status !== 'open' && <p className="note">你不是此订单参与者，仅显示公开任务信息。</p>}
               {task.status === 'disputed' && member && <div className="notice">申诉说明：{task.dispute}<br />资金暂停结算，由校园管理员审核处理。</div>}
             </div>
@@ -741,6 +815,14 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
               <div className="summary-row"><span>资金状态</span><b>{task.status === 'done' ? '模拟结算完成' : task.status === 'cancelled' ? '已模拟退款' : task.status === 'disputed' ? '争议中 · 暂停结算' : '待结算'}</b></div>
               <p className="note">{task.budget ? '商品款由接单者先垫付，收货后返还。垫款返还与跑腿收入分别记账。' : '确认收货或平台裁决后，报酬才进入接单者账户。'}</p>
             </div>
+            <div className="panel guarantee">
+              <h3><Icon name="shield" size={16} /> 平台担保</h3>
+              <div className="guarantee-list">
+                <span>🔒 资金托管 · 确认收货后才结算</span>
+                <span>🛡️ 物品损坏 / 遗失可申诉，平台裁决赔付</span>
+                <span>⏱️ 超时未交付，自动提醒发布者</span>
+              </div>
+            </div>
             <div className="panel">
               <h3>本单同学</h3>
               <div className="sheet-people">
@@ -750,9 +832,9 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
                     <MiniCard user={runner} />
                     {currentUser.id !== runner.id && (
                       <div className="deliverer-actions">
-                        <Btn kind="secondary" onClick={() => setModal(reviewDelivererModal(runner, dispatch))}>评价 TA</Btn>
-                        <Btn kind="secondary" onClick={() => setModal(reportDelivererModal(runner, dispatch))}>举报</Btn>
-                        <Btn kind="secondary" onClick={() => setModal(blockDelivererModal(runner, dispatch, currentUser))}>
+                        <Btn kind="secondary" onClick={() => setModal(reviewDelivererModal(runner, dispatch, setModal))}>评价 TA</Btn>
+                        <Btn kind="secondary" onClick={() => setModal(reportDelivererModal(runner, dispatch, setModal))}>举报</Btn>
+                        <Btn kind="secondary" onClick={() => setModal(blockDelivererModal(runner, dispatch, currentUser, setModal))}>
                           {currentUser.blocked.includes(runner.id) ? '已拉黑' : '拉黑'}
                         </Btn>
                       </div>
@@ -763,6 +845,7 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
                         {runner.reviews.map((r: any, i: number) => (
                           <div key={i} className="review">
                             <b>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.fromName}</b>
+                            {r.tags?.length > 0 && <div className="review-tags">{r.tags.map((t: string) => <span key={t} className="review-tag">{t}</span>)}</div>}
                             <p>{r.text}</p>
                           </div>
                         ))}
@@ -813,115 +896,123 @@ function agreementModal() {
   </>
 }
 
-function confirmModal(title: string, body: string, onConfirm: () => void) {
+function confirmModal(title: string, body: string, onConfirm: () => void, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>{title}</h2>
     <p>{body}</p>
-    <div className="actions"><Btn onClick={onConfirm}>确认</Btn><Btn kind="secondary">再想想</Btn></div>
+    <div className="actions"><Btn onClick={() => { onConfirm(); setModal(null); }}>确认</Btn><Btn kind="secondary" onClick={() => setModal(null)}>再想想</Btn></div>
   </>
 }
 
-function acceptModal(task: Task, dispatch: any) {
+function acceptModal(task: Task, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>确认接下这份任务</h2>
     <p>{task.title}</p>
     <div className="summary-row"><span>跑腿报酬</span><b>¥{money(task.fee)}</b></div>
     {task.budget > 0 && <div className="notice">发布者已模拟预付 ¥{money(task.fee + task.budget)}，资金待结算。你需要先垫付商品款（预算 ¥{money(task.budget)}），收货确认后返还。</div>}
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('accept', task.id, { agreement: !!d.get('agreement') }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('accept', task.id, { agreement: !!d.get('agreement') }); setModal(null); }}>
       {Math.max(task.value, task.budget) >= LARGE_LIMIT && <><div className="guide">大额物品协议：核对型号、价值和包装，保留取货及交付证据；纠纷暂停结算。</div><label className="check"><input type="checkbox" name="agreement" required />已阅读并确认大额物品风险与责任约定</label></>}
-      <div className="actions"><Btn>确认接单</Btn></div>
+      <div className="actions"><Btn type="submit">确认接单</Btn></div>
     </form>
   </>
 }
 
-function deliverModal(task: Task, dispatch: any) {
+function deliverModal(task: Task, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>提交交付凭证</h2>
     <p>先送达，再提交凭证。照片作为证据，仍需发布者确认收货。</p>
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('deliver', task.id, { actual: Math.round(Number(d.get('actual') || 0) * 100), proof: true }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('deliver', task.id, { actual: Math.round(Number(d.get('actual') || 0) * 100), proof: true }); setModal(null); }}>
       {task.budget > 0 && <label className="field">实际商品款（元）<input name="actual" type="number" min="0" max={task.budget / 100} step="0.01" defaultValue={task.budget / 100} required /></label>}
       <div className="proof"><Icon name="box" size={50} /><p>雏形仅提供合成交付示例，不收集真实照片。</p></div>
-      <div className="actions"><Btn>提交，等待确认收货</Btn></div>
+      <div className="actions"><Btn type="submit">提交，等待确认收货</Btn></div>
     </form>
   </>
 }
 
-function disputeModal(task: Task, dispatch: any) {
+function disputeModal(task: Task, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>申请平台协调</h2>
     <p>提交后暂停结算。请描述交付、物品或金额问题。</p>
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('dispute', task.id, { reason: d.get('reason') }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('dispute', task.id, { reason: d.get('reason') }); setModal(null); }}>
       <label className="field">纠纷说明<textarea name="reason" required maxLength={500} placeholder="例如：收到的商品与约定型号不一致" /></label>
-      <div className="actions"><Btn>提交申诉，暂停结算</Btn></div>
+      <div className="actions"><Btn type="submit">提交申诉，暂停结算</Btn></div>
     </form>
   </>
 }
 
-function resolveModal(task: Task, dispatch: any) {
+function resolveModal(task: Task, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>平台纠纷处理</h2>
     <p>订单：{task.title}</p>
     <div className="guide">申诉：{task.dispute}<br />交付凭证：{task.proof ? '已附示例凭证' : '未提交'}<br />模拟预付款：¥{money(task.fee + task.budget)}</div>
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch(String(d.get('result')), task.id, { reason: d.get('reason') }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch(String(d.get('result')), task.id, { reason: d.get('reason') }); setModal(null); }}>
       <label className="field">处理结果<select name="result"><option value="resolveRefund">全额退款给发布者</option><option value="resolvePay" disabled={!task.proof}>依凭证结算给接单者，退回预算差额</option></select></label>
       <label className="field">裁决依据<textarea name="reason" required maxLength={300} placeholder="记录双方沟通与凭证核验结果" /></label>
-      <div className="actions"><Btn>确认模拟裁决</Btn></div>
+      <div className="actions"><Btn type="submit">确认模拟裁决</Btn></div>
     </form>
   </>
 }
 
-function reviewModal(task: Task, dispatch: any) {
+function reviewModal(task: Task, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>给这次互助一个回应</h2>
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('review', task.id, { stars: Number(d.get('stars')), text: d.get('text') }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('review', task.id, { stars: Number(d.get('stars')), text: d.get('text') }); setModal(null); }}>
       <label className="field">服务评分<select name="stars"><option value="5">★★★★★ 很满意</option><option value="4">★★★★ 满意</option><option value="3">★★★ 一般</option><option value="2">★★ 不太满意</option><option value="1">★ 不满意</option></select></label>
       <label className="field">评价<textarea name="text" maxLength={200} placeholder="沟通及时、交付准时，都可以说一说" /></label>
       <p className="note">双方提交后公开，减少相互评价的压力。</p>
-      <div className="actions"><Btn>提交评价</Btn></div>
+      <div className="actions"><Btn type="submit">提交评价</Btn></div>
     </form>
   </>
 }
 
-function reviewDelivererModal(target: User, dispatch: any) {
+function reviewDelivererModal(target: User, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>评价 {target.name}</h2>
     <p>你的评价会出现在 TA 的学生卡信用档案里，帮助其他同学判断。</p>
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('reviewDeliverer', target.id, { stars: Number(d.get('stars')), text: d.get('text') }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('reviewDeliverer', target.id, { stars: Number(d.get('stars')), text: d.get('text'), tags: d.getAll('tag') }); setModal(null); }}>
       <label className="field">服务评分<select name="stars"><option value="5">★★★★★ 很满意</option><option value="4">★★★★ 满意</option><option value="3">★★★ 一般</option><option value="2">★★ 不太满意</option><option value="1">★ 不满意</option></select></label>
+      <div className="tag-picker">
+        <span>快捷标签（可多选）</span>
+        <div className="tag-opts">
+          {REVIEW_TAGS.map((t) => (
+            <label key={t} className="tag-opt"><input type="checkbox" name="tag" value={t} />{t}</label>
+          ))}
+        </div>
+      </div>
       <label className="field">评价<textarea name="text" maxLength={200} placeholder="准时、沟通、物品完好，都可以说一说" /></label>
-      <div className="actions"><Btn>提交评价</Btn></div>
+      <div className="actions"><Btn type="submit">提交评价</Btn></div>
     </form>
   </>
 }
 
-function reportDelivererModal(target: User, dispatch: any) {
+function reportDelivererModal(target: User, dispatch: any, setModal: any) {
   return <>
     <button className="modal-close">×</button>
     <h2>举报 {target.name}</h2>
     <p>请说明举报原因，校园管理员会核实处理。恶意举报也会被记录。</p>
-    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('reportDeliverer', target.id, { reason: d.get('reason') }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('reportDeliverer', target.id, { reason: d.get('reason') }); setModal(null); }}>
       <label className="field">举报原因<textarea name="reason" required maxLength={300} placeholder="例如：交付物品破损、虚假接单、态度恶劣…" /></label>
-      <div className="actions"><Btn kind="soft">提交举报</Btn></div>
+      <div className="actions"><Btn kind="soft" type="submit">提交举报</Btn></div>
     </form>
   </>
 }
 
-function blockDelivererModal(target: User, dispatch: any, currentUser: User) {
+function blockDelivererModal(target: User, dispatch: any, currentUser: User, setModal: any) {
   const already = currentUser.blocked.includes(target.id)
   return <>
     <button className="modal-close">×</button>
     <h2>{already ? '取消拉黑' : '拉黑'} {target.name}？</h2>
     <p>{already ? '取消拉黑后，你将重新看到 TA 发布的任务。' : '拉黑后，你将不再看到 TA 发布的任务，TA 也无法接你的单。'}</p>
     <div className="actions">
-      <Btn kind="soft" onClick={() => dispatch('blockDeliverer', target.id)}>{already ? '取消拉黑' : '确认拉黑'}</Btn>
-      <Btn kind="secondary">再想想</Btn>
+      <Btn kind="soft" onClick={() => { dispatch('blockDeliverer', target.id); setModal(null); }}>{already ? '取消拉黑' : '确认拉黑'}</Btn>
+      <Btn kind="secondary" onClick={() => setModal(null)}>再想想</Btn>
     </div>
   </>
 }
