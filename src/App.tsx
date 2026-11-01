@@ -12,6 +12,7 @@ import {
 } from './domain'
 import { useAppStore } from './store'
 import { Icon, KIND_ICON } from './icons'
+import './App.css'
 
 type View = 'hall' | 'publish' | 'orders' | 'identity' | 'wallet' | 'admin'
 
