@@ -1,183 +1,85 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Task, TaskStatus, TaskType, User } from './types'
-import { INITIAL_TASKS, ME } from './data'
+import type { AppState } from './domain'
+import { act, seed } from './domain'
 
-const STORAGE_KEY = 'campuspal_tasks_v1'
+const STORAGE_KEY = 'campuspal_demo_v2'
 
-function loadTasks(): Task[] {
+function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed?.version === 1) return parsed
+    }
   } catch {
     /* ignore */
   }
-  return INITIAL_TASKS
+  return seed()
 }
 
-// 状态文案 + 颜色
-export const STATUS_TEXT: Record<TaskStatus, string> = {
-  open: '待接单',
-  inProgress: '进行中',
-  pendingConfirm: '待验收',
-  completed: '已完成',
-  cancelled: '已取消',
-}
-
-export const TYPE_ICON: Record<TaskType, string> = {
-  快递: '📦',
-  代买: '🛍️',
-  占座: '🪑',
-  带饭: '🍱',
-  打印: '🖨️',
-  其他: '📌',
-}
-
-export interface NewTaskInput {
-  type: TaskType
-  title: string
-  description: string
-  price: number
-  location: string
-  deliverTo: string
-  deadline: string
-  urgent: boolean
+const TOAST_MSG: Record<string, string> = {
+  publish: '任务已发布，模拟预付款已进入待结算',
+  accept: '接单成功！可在订单中提交交付',
+  deliver: '交付凭证已提交，请切换发布者确认收货',
+  confirm: '收货已确认，模拟结算完成',
+  dispute: '申诉已提交，资金暂停结算',
+  cancel: '取消成功，模拟预付款已退回',
+  submitCert: '双证示例已提交，请切换管理员审核',
+  approveCert: '审核通过，认证已更新',
+  resolvePay: '平台裁决完成，款项已模拟结算',
+  resolveRefund: '平台裁决完成，模拟退款已到账',
+  review: '评价已记录，双方提交后公开',
 }
 
 export function useAppStore() {
-  const [tasks, setTasks] = useState<Task[]>(loadTasks)
-  const [me, setMe] = useState<User>(ME)
+  const [state, setState] = useState<AppState>(load)
   const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
-  }, [tasks])
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch {
+      /* ignore */
+    }
+  }, [state])
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
-    window.setTimeout(() => setToast(null), 2200)
+    window.setTimeout(() => setToast(null), 2800)
   }, [])
 
-  // 发布任务
-  const publishTask = useCallback(
-    (input: NewTaskInput) => {
-      const task: Task = {
-        id: 't' + Date.now(),
-        ...input,
-        status: 'open',
-        publisher: me,
-        createdAt: Date.now(),
-        rewardCredit: 10,
-        reviews: [],
+  const dispatch = useCallback(
+    (command: string, id: string, data: Record<string, any> = {}) => {
+      const next = structuredClone(state)
+      try {
+        act(next, command, id, data)
+        setState(next)
+        showToast(TOAST_MSG[command] || '操作完成')
+        return true
+      } catch (e) {
+        showToast((e as Error).message)
+        return false
       }
-      setTasks((prev) => [task, ...prev])
-      setMe((prev) => ({ ...prev, publishedCount: prev.publishedCount + 1 }))
-      showToast('✅ 任务发布成功，等待同学接单')
     },
-    [me, showToast],
+    [state, showToast],
   )
 
-  // 接单
-  const acceptTask = useCallback(
-    (taskId: string) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: 'inProgress', runner: me } : t)),
-      )
-      showToast('🤝 接单成功，请及时完成跑腿')
+  const setUser = useCallback(
+    (id: string) => {
+      setState((prev) => ({ ...prev, user: id }))
     },
-    [me, showToast],
+    [],
   )
 
-  // 跑腿完成 → 待验收
-  const finishTask = useCallback(
-    (taskId: string) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: 'pendingConfirm' } : t)),
-      )
-      showToast('🏁 已标记完成，等待发布者验收')
-    },
-    [showToast],
-  )
+  const setNow = useCallback((date: string) => {
+    setState((prev) => ({ ...prev, now: date + 'T14:00:00+08:00' }))
+  }, [])
 
-  // 发布者验收 → 完成 + 信用分增加
-  const confirmTask = useCallback(
-    (taskId: string) => {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? { ...t, status: 'completed', completedAt: Date.now() }
-            : t,
-        ),
-      )
-      setMe((prev) => ({
-        ...prev,
-        creditScore: prev.creditScore + 10,
-        completedCount: prev.completedCount + 1,
-      }))
-      showToast('🎉 验收完成，信用分 +10')
-    },
-    [showToast],
-  )
+  const reset = useCallback(() => {
+    setState(seed())
+  }, [])
 
-  // 取消任务（仅发布者可取消未接单的任务）
-  const cancelTask = useCallback(
-    (taskId: string) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: 'cancelled' } : t)),
-      )
-      showToast('任务已取消')
-    },
-    [showToast],
-  )
+  const currentUser = state.users.find((u) => u.id === state.user)!
 
-  // 评价（完成后发布者对跑腿者评分）
-  const reviewTask = useCallback(
-    (taskId: string, rating: number, content: string) => {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                reviews: [
-                  ...t.reviews,
-                  {
-                    id: 'r' + Date.now(),
-                    fromName: t.publisher.name,
-                    fromAvatar: t.publisher.avatar,
-                    rating,
-                    content,
-                    date: new Date().toLocaleDateString('zh-CN'),
-                  },
-                ],
-              }
-            : t,
-        ),
-      )
-      setMe((prev) =>
-        rating === 5
-          ? { ...prev, creditScore: prev.creditScore + 5 }
-          : prev,
-      )
-      showToast('⭐ 评价已提交')
-    },
-    [showToast],
-  )
-
-  // 模拟学号实名认证
-  const verify = useCallback(() => {
-    setMe((prev) => ({ ...prev, verified: true, creditScore: prev.creditScore + 100 }))
-    showToast('🎓 实名认证成功，信用分 +100')
-  }, [showToast])
-
-  return {
-    tasks,
-    me,
-    toast,
-    publishTask,
-    acceptTask,
-    finishTask,
-    confirmTask,
-    cancelTask,
-    reviewTask,
-    verify,
-  }
+  return { state, currentUser, toast, dispatch, setUser, setNow, reset }
 }
