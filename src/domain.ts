@@ -13,8 +13,12 @@ export interface User {
   avatar: string // 姓氏单字
   tag: string // 演示身份标签
   school: string
+  studentId: string // 学号
+  faculty: string // 学院
+  major: string // 专业
+  admitYear: string // 入学年份
   cert: CertStatus
-  validUntil: string // 学籍证明有效期
+  validUntil: string // 学生卡有效期
   graduate: string // 预计毕业日期
   // 客观履约记录（信用画像，非公式）
   completed: number // 完成单量
@@ -22,6 +26,8 @@ export interface User {
   ratingCount: number // 评价数
   ratingSum: number // 评价总分
   responsibleCancel: number // 经核实的责任取消
+  reviews: DeliveryReview[] // 收到的送货员评论
+  blocked: string[] // 拉黑的用户 id 列表
 }
 
 export interface Event {
@@ -34,6 +40,25 @@ export interface Review {
   text: string
 }
 
+export interface DeliveryReview {
+  from: string // 评论人 id
+  fromName: string // 评论人姓名
+  stars: number
+  text: string
+  date: string
+}
+
+export interface Report {
+  id: string
+  targetId: string // 被举报的送货员 id
+  targetName: string
+  fromId: string
+  fromName: string
+  reason: string
+  date: string
+  status: 'pending' | 'resolved'
+}
+
 export interface Task {
   id: string
   owner: string
@@ -42,6 +67,10 @@ export interface Task {
   title: string
   from: string
   to: string
+  fromLat: number
+  fromLng: number
+  toLat: number
+  toLng: number
   fee: number // 跑腿报酬（分）
   budget: number // 代买商品预算（分）
   value: number // 物品申报价值（分）
@@ -72,13 +101,25 @@ export interface AppState {
   users: User[]
   tasks: Task[]
   ledger: LedgerEntry[]
+  reports: Report[]
   seq: number
 }
 
 // ===== 常量 =====
 export const DAY = 86400000
 export const LARGE_LIMIT = 50000 // 大额协议演示阈值：500 元
-export const SCHOOL = '云杉大学'
+export const SCHOOL = '香港大学'
+export const SCHOOL_EN = 'THE UNIVERSITY OF HONG KONG'
+
+// 港大主校区地标（用于地图预设选点）
+export const LANDMARKS = [
+  { name: '主图书馆', lat: 22.2837, lng: 114.1376 },
+  { name: '智华馆', lat: 22.2839, lng: 114.1368 },
+  { name: '大学街', lat: 22.2843, lng: 114.1363 },
+  { name: '何添堂食堂', lat: 22.2834, lng: 114.1380 },
+  { name: '港铁香港大学站', lat: 22.2847, lng: 114.1354 },
+  { name: '百周年校园', lat: 22.2831, lng: 114.1344 },
+]
 
 // ===== 基础工具 =====
 export const time = (d: string) => new Date(d).getTime()
@@ -99,8 +140,8 @@ export function graduation(u: User, now: string) {
 // ===== 接单资格检查 =====
 export function eligibility(u: User, now: string): string {
   if (u.id === 'admin') return '管理员不参与接单'
-  if (u.cert !== 'approved') return '请先完成学生证与学籍证明双重审核'
-  if (time(now) >= time(u.validUntil)) return '学籍报告已过期，请续期并重新审核'
+  if (u.cert !== 'approved') return '请先完成港大学生卡审核'
+  if (time(now) >= time(u.validUntil)) return '学生卡已过期，请续期并重新审核'
   if (time(now) >= time(u.graduate)) return '已进入毕业清算期，暂停接新任务'
   return ''
 }
@@ -151,52 +192,137 @@ export function seed(): AppState {
     ratingCount: 0,
     ratingSum: 0,
     responsibleCancel: 0,
+    reviews: [] as DeliveryReview[],
+    blocked: [] as string[],
   }
   const users: User[] = [
-    { ...base, id: 'lin', name: '林晚', avatar: '林', tag: '发布者', completed: 12, onTime: 12, ratingCount: 9, ratingSum: 44 },
-    { ...base, id: 'chen', name: '陈默', avatar: '陈', tag: '接单者', completed: 46, onTime: 45, ratingCount: 38, ratingSum: 186 },
-    { ...base, id: 'zhou', name: '周扬', avatar: '周', tag: '认证过期', validUntil: '2026-10-30T23:59:59+08:00', completed: 7, onTime: 6, ratingCount: 5, ratingSum: 23 },
-    { ...base, id: 'xu', name: '许宁', avatar: '许', tag: '即将毕业', graduate: '2026-11-20T23:59:59+08:00', completed: 3, onTime: 3, ratingCount: 2, ratingSum: 10 },
-    { ...base, id: 'admin', name: '校园管理员', avatar: '管', tag: '审核与申诉', cert: 'approved', completed: 0 },
+    {
+      ...base,
+      id: 'lin',
+      name: '林晚',
+      avatar: '林',
+      tag: '发布者',
+      studentId: '3035123456',
+      faculty: '工程学院',
+      major: '计算机科学',
+      admitYear: '2024',
+      completed: 12,
+      onTime: 12,
+      ratingCount: 9,
+      ratingSum: 44,
+      reviews: [
+        { from: 'chen', fromName: '陈默', stars: 5, text: '任务描述清晰，沟通顺畅，好相处的发布者！', date: '2026-10-27T15:00:00+08:00' },
+        { from: 'zhou', fromName: '周扬', stars: 5, text: '感谢信任，合作愉快。', date: '2026-10-22T10:00:00+08:00' },
+      ],
+    },
+    {
+      ...base,
+      id: 'chen',
+      name: '陈默',
+      avatar: '陈',
+      tag: '接单者',
+      studentId: '3035234567',
+      faculty: '工程学院',
+      major: '机械工程',
+      admitYear: '2023',
+      completed: 46,
+      onTime: 45,
+      ratingCount: 38,
+      ratingSum: 186,
+      reviews: [
+        { from: 'lin', fromName: '林晚', stars: 5, text: '取件很快，包装完好，还主动拍了照，很靠谱！', date: '2026-10-28T12:00:00+08:00' },
+        { from: 'xu', fromName: '许宁', stars: 5, text: '准时送到，沟通顺畅，五星好评。', date: '2026-10-25T18:30:00+08:00' },
+        { from: 'zhou', fromName: '周扬', stars: 4, text: '态度很好，就是稍微晚了几分钟，总体满意。', date: '2026-10-20T14:10:00+08:00' },
+      ],
+    },
+    { ...base, id: 'zhou', name: '周扬', avatar: '周', tag: '认证过期', studentId: '3035345678', faculty: '理学院', major: '物理学', admitYear: '2023', validUntil: '2026-10-30T23:59:59+08:00', completed: 7, onTime: 6, ratingCount: 5, ratingSum: 23 },
+    {
+      ...base,
+      id: 'xu',
+      name: '许宁',
+      avatar: '许',
+      tag: '即将毕业',
+      studentId: '3035456789',
+      faculty: '社会科学学院',
+      major: '经济学',
+      admitYear: '2022',
+      graduate: '2026-11-20T23:59:59+08:00',
+      completed: 3,
+      onTime: 3,
+      ratingCount: 2,
+      ratingSum: 10,
+      reviews: [
+        { from: 'chen', fromName: '陈默', stars: 4, text: '很细心，就是地址稍微有点难找。', date: '2026-10-24T16:30:00+08:00' },
+      ],
+    },
+    { ...base, id: 'admin', name: '校园管理员', avatar: '管', tag: '审核与申诉', studentId: '—', faculty: '教务处', major: '', admitYear: '', cert: 'approved', completed: 0 },
   ]
+
+  // 港大地点 → 坐标
+  const P: Record<string, [number, number]> = {
+    港铁香港大学站: [22.2847, 114.1354],
+    百周年校园: [22.2831, 114.1344],
+    何添堂食堂: [22.2834, 114.1380],
+    主图书馆: [22.2837, 114.1376],
+    智华馆: [22.2839, 114.1368],
+    大学街: [22.2843, 114.1363],
+  }
 
   const rows: [string, string, TaskKind, string, string, string, number, number, number, string, string][] = [
-    ['t1', 'lin', '快递代取', '帮取一个小包裹，顺路到南苑', '菜鸟驿站', '南苑 3 栋楼下', 400, 0, 0, '包裹约 1kg，不用上楼，到楼下联系即可。', '16:30'],
-    ['t2', 'lin', '餐食代买', '图书馆续命咖啡，冰美式一杯', '一食堂咖啡店', '图书馆一楼', 500, 3000, 0, '少冰不加糖，售罄请先联系我。', '16:00'],
-    ['t3', 'xu', '打印代取', '论文打印，送到教学楼', '校园打印店', '明德楼一楼', 600, 0, 0, '已在线付打印费，取件报尾号 0621。', '17:00'],
-    ['t4', 'lin', '校内送物', '落在教室的教材，帮忙带回来', '明德楼 201', '北苑大厅', 350, 0, 0, '蓝色封面统计学教材，送到大厅即可。', '18:00'],
-    ['t5', 'lin', '餐食代买', '代买绘图板，需确认大额协议', '校园数码店', '南苑会客区', 1200, 68000, 70000, '核对型号与封装，保留小票，双方确认协议后接单。', '19:00'],
-    ['t6', 'chen', '快递代取', '两本新书，找顺路的同学', '东门快递点', '图书馆入口', 450, 0, 0, '已到站，小件可手提。', '17:30'],
+    ['t1', 'lin', '快递代取', '帮取一个包裹，顺路到百周年校园', '港铁香港大学站快递柜', '百周年校园 3 楼', 400, 0, 0, '小包裹约 1kg，不用上楼，到楼下联系即可。', '16:30'],
+    ['t2', 'lin', '餐食代买', '图书馆续命咖啡，冰美式一杯', '何添堂食堂咖啡店', '主图书馆一楼', 500, 3000, 0, '少冰不加糖，售罄请先联系我。', '16:00'],
+    ['t3', 'xu', '打印代取', '论文打印，送到智华馆', '大学街打印店', '智华馆 2 楼', 600, 0, 0, '已在线付打印费，取件报尾号 0621。', '17:00'],
+    ['t4', 'lin', '校内送物', '落在教室的教材，帮忙带回来', '主图书馆 4 楼', '百周年校园大厅', 350, 0, 0, '蓝色封面统计学教材，送到大厅即可。', '18:00'],
+    ['t5', 'lin', '餐食代买', '代买绘图板，需确认大额协议', '大学街数码店', '智华馆会客区', 1200, 68000, 70000, '核对型号与封装，保留小票，双方确认协议后接单。', '19:00'],
+    ['t6', 'chen', '快递代取', '两本新书，找顺路的同学', '港铁香港大学站', '主图书馆入口', 450, 0, 0, '已到站，小件可手提。', '17:30'],
   ]
 
-  const tasks: Task[] = rows.map((r) => ({
-    id: r[0],
-    owner: r[1],
-    runner: null,
-    kind: r[2],
-    title: r[3],
-    from: r[4],
-    to: r[5],
-    fee: r[6],
-    budget: r[7],
-    value: r[8],
-    note: r[9],
-    due: `2026-10-31T${r[10]}:00+08:00`,
-    status: 'open',
-    actual: 0,
-    proof: false,
-    dispute: '',
-    agreement: r[7] >= LARGE_LIMIT,
-    runnerAgreement: false,
-    events: [{ text: '发布者已模拟支付，资金待结算', at: now }],
-    reviews: {},
-  }))
+  const coordOf = (name: string): [number, number] => {
+    for (const k of Object.keys(P)) if (name.includes(k)) return P[k]
+    return [22.2840, 114.1363] // 默认港大主校区中心
+  }
 
-  return { version: 1, now, user: 'chen', users, tasks, ledger: [], seq: 7 }
+  const tasks: Task[] = rows.map((r) => {
+    const [fromLat, fromLng] = coordOf(r[4])
+    const [toLat, toLng] = coordOf(r[5])
+    return {
+      id: r[0],
+      owner: r[1],
+      runner: null,
+      kind: r[2],
+      title: r[3],
+      from: r[4],
+      to: r[5],
+      fromLat,
+      fromLng,
+      toLat,
+      toLng,
+      fee: r[6],
+      budget: r[7],
+      value: r[8],
+      note: r[9],
+      due: `2026-10-31T${r[10]}:00+08:00`,
+      status: 'open',
+      actual: 0,
+      proof: false,
+      dispute: '',
+      agreement: r[7] >= LARGE_LIMIT,
+      runnerAgreement: false,
+      events: [{ text: '发布者已模拟支付，资金待结算', at: now }],
+      reviews: {},
+    }
+  })
+
+  const reports: Report[] = [
+    { id: 'r1', targetId: 'zhou', targetName: '周扬', fromId: 'lin', fromName: '林晚', reason: '接单后未按时交付，多次联系不上', date: '2026-10-29T09:00:00+08:00', status: 'pending' },
+    { id: 'r2', targetId: 'xu', targetName: '许宁', fromId: 'chen', fromName: '陈默', reason: '交付的物品有轻微破损，包装不严', date: '2026-10-26T14:20:00+08:00', status: 'resolved' },
+  ]
+
+  return { version: 1, now, user: 'chen', users, tasks, ledger: [], reports, seq: 7 }
 }
 
 // ===== 命令执行（状态机 + 资金守恒）=====
-function requireThat(ok: boolean, msg: string) {
+function requireThat(ok: unknown, msg: string): asserts ok {
   if (!ok) throw new Error(msg)
 }
 
@@ -227,6 +353,10 @@ export function act(s: AppState, command: string, id: string, data: Record<strin
       title: data.title.slice(0, 60),
       from: data.from.slice(0, 60),
       to: data.to.slice(0, 60),
+      fromLat: Number(data.fromLat) || 22.2840,
+      fromLng: Number(data.fromLng) || 114.1363,
+      toLat: Number(data.toLat) || 22.2840,
+      toLng: Number(data.toLng) || 114.1363,
       note: String(data.note || '').slice(0, 400),
       due: data.due,
       fee,
@@ -247,7 +377,7 @@ export function act(s: AppState, command: string, id: string, data: Record<strin
 
   if (command === 'submitCert') {
     requireThat(u.id !== 'admin', '管理员不能提交')
-    requireThat(data.card && data.report, '请同时选择学生证与可查验学籍证明示例')
+    requireThat(data.card, '请确认港大学生卡信息')
     u.cert = 'pending'
     return
   }
@@ -258,6 +388,60 @@ export function act(s: AppState, command: string, id: string, data: Record<strin
     requireThat(target?.cert === 'pending', '仅可审核待审核申请')
     target!.cert = 'approved'
     target!.validUntil = addDays(s.now, 180)
+    return
+  }
+
+  // ===== 对送货员的评论 / 举报 / 拉黑 =====
+  if (command === 'reviewDeliverer') {
+    const target = s.users.find((x) => x.id === id)
+    requireThat(target, '送货员不存在')
+    requireThat(target.id !== u.id, '不能评论自己')
+    requireThat([1, 2, 3, 4, 5].includes(Number(data.stars)), '请选择 1 至 5 星')
+    target.reviews.push({
+      from: u.id,
+      fromName: u.name,
+      stars: Number(data.stars),
+      text: String(data.text || '').slice(0, 200),
+      date: s.now,
+    })
+    target.ratingCount += 1
+    target.ratingSum += Number(data.stars)
+    return
+  }
+
+  if (command === 'reportDeliverer') {
+    const target = s.users.find((x) => x.id === id)
+    requireThat(target, '送货员不存在')
+    requireThat(target.id !== u.id, '不能举报自己')
+    requireThat(String(data.reason || '').trim().length > 0, '请填写举报原因')
+    s.reports.push({
+      id: 'r' + s.seq++,
+      targetId: target.id,
+      targetName: target.name,
+      fromId: u.id,
+      fromName: u.name,
+      reason: String(data.reason).slice(0, 300),
+      date: s.now,
+      status: 'pending',
+    })
+    return
+  }
+
+  if (command === 'blockDeliverer') {
+    const target = s.users.find((x) => x.id === id)
+    requireThat(target, '送货员不存在')
+    requireThat(target.id !== u.id, '不能拉黑自己')
+    const idx = u.blocked.indexOf(target.id)
+    if (idx >= 0) u.blocked.splice(idx, 1)
+    else u.blocked.push(target.id)
+    return
+  }
+
+  if (command === 'resolveReport') {
+    requireThat(u.id === 'admin', '需要管理员处理')
+    const report = s.reports.find((x) => x.id === id)
+    requireThat(report, '举报不存在')
+    report.status = 'resolved'
     return
   }
 

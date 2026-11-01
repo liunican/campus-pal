@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AppState } from './domain'
 import { act, seed } from './domain'
 
-const STORAGE_KEY = 'campuspal_demo_v2'
+const STORAGE_KEY = 'campuspal_demo_v3'
 
 function load(): AppState {
   try {
@@ -24,11 +24,15 @@ const TOAST_MSG: Record<string, string> = {
   confirm: '收货已确认，模拟结算完成',
   dispute: '申诉已提交，资金暂停结算',
   cancel: '取消成功，模拟预付款已退回',
-  submitCert: '双证示例已提交，请切换管理员审核',
+  submitCert: '学生卡已提交审核，请切换管理员审核',
   approveCert: '审核通过，认证已更新',
   resolvePay: '平台裁决完成，款项已模拟结算',
   resolveRefund: '平台裁决完成，模拟退款已到账',
   review: '评价已记录，双方提交后公开',
+  reviewDeliverer: '评论已提交',
+  reportDeliverer: '举报已提交，管理员会尽快处理',
+  blockDeliverer: '已拉黑该送货员',
+  resolveReport: '举报已处理',
 }
 
 export function useAppStore() {
@@ -52,10 +56,10 @@ export function useAppStore() {
     (command: string, id: string, data: Record<string, any> = {}) => {
       const next = structuredClone(state)
       try {
-        act(next, command, id, data)
+        const result = act(next, command, id, data)
         setState(next)
         showToast(TOAST_MSG[command] || '操作完成')
-        return true
+        return result
       } catch (e) {
         showToast((e as Error).message)
         return false

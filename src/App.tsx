@@ -1,8 +1,10 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Task, TaskStatus, User } from './domain'
 import {
+  LANDMARKS,
   LARGE_LIMIT,
   SCHOOL,
+  SCHOOL_EN,
   closed,
   creditProfile,
   eligibility,
@@ -11,17 +13,19 @@ import {
   time,
 } from './domain'
 import { useAppStore } from './store'
-import { Icon, KIND_ICON } from './icons'
+import { Icon, KIND_ICON, Crest, BuildingArt } from './icons'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import './App.css'
 
-type View = 'hall' | 'publish' | 'orders' | 'identity' | 'wallet' | 'admin'
+type View = 'hall' | 'publish' | 'orders' | 'card' | 'admin'
 
 const NAV: { key: View; label: string; icon: string; desktop?: boolean }[] = [
   { key: 'hall', label: '任务大厅', icon: 'grid' },
   { key: 'publish', label: '发布任务', icon: 'plus' },
   { key: 'orders', label: '我的订单', icon: 'list' },
-  { key: 'identity', label: '身份认证', icon: 'shield' },
-  { key: 'wallet', label: '信用账户', icon: 'wallet', desktop: true },
+  { key: 'card', label: '我的卡', icon: 'shield' },
+  { key: 'admin', label: '平台工作台', icon: 'user', desktop: true },
 ]
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -47,7 +51,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">
-            <Icon name="shield" size={24} />
+            <Crest size={30} />
           </span>
           <div>
             <strong>校园帮</strong>
@@ -65,29 +69,24 @@ export default function App() {
               <span>{n.label}</span>
             </a>
           ))}
-          <div className="nav-label">校园服务</div>
-          <a className={'nav-item desktop-only' + (view === 'admin' ? ' active' : '')} onClick={() => setView('admin')}>
-            <Icon name="user" />
-            <span>平台工作台</span>
-          </a>
         </nav>
         <div className="sidebar-bottom">
           <div className="tiny-card">
-            <Icon name="shield" size={18} />
-            <strong>信用为凭，同窗互助</strong>
-            双证核验 · 履约留痕 · 确认后结算
+            <Crest size={22} />
+            <strong>学生卡 · 信用名片</strong>
+            学生卡核验 · 履约留痕 · 确认后结算
           </div>
-          <div className="sidebar-footer">校园帮 CAMPUSPAL · 产品交互雏形</div>
+          <div className="sidebar-footer">校园帮 CAMPUSPAL · 港大互助平台</div>
         </div>
       </aside>
 
       <div className="main">
         <header className="topbar">
           <div className="school">
-            <Icon name="pin" size={18} /> {SCHOOL} <span>演示校园</span>
+            <Icon name="pin" size={18} /> {SCHOOL} <span>演示校区</span>
           </div>
           <div className="profile">
-            <a className="muted" onClick={() => setView('wallet')}>信用账户</a>
+            <a className="muted" onClick={() => setView('card')}>我的卡</a>
             <div className="avatar">{currentUser.avatar}</div>
             <select value={state.user} onChange={(e) => setUser(e.target.value)} aria-label="切换演示身份">
               {state.users.map((u) => (
@@ -114,8 +113,7 @@ export default function App() {
           {view === 'hall' && <Hall state={state} currentUser={currentUser} onOpen={setDetailId} onView={setView} />}
           {view === 'publish' && <Publish state={state} currentUser={currentUser} dispatch={dispatch} onOpen={setDetailId} onView={setView} setModal={setModal} />}
           {view === 'orders' && <Orders state={state} currentUser={currentUser} onOpen={setDetailId} />}
-          {view === 'identity' && <Identity state={state} currentUser={currentUser} dispatch={dispatch} onView={setView} />}
-          {view === 'wallet' && <Wallet state={state} currentUser={currentUser} onOpen={setDetailId} />}
+          {view === 'card' && <Card state={state} currentUser={currentUser} dispatch={dispatch} onOpen={setDetailId} onView={setView} />}
           {view === 'admin' && <Admin state={state} dispatch={dispatch} setNow={setNow} onOpen={setDetailId} setModal={setModal} />}
 
           <footer className="page-footer">
@@ -186,8 +184,58 @@ function Btn({ children, onClick, kind = '', disabled = false, type = 'button' }
   )
 }
 
+// ===== 学生卡名片 =====
+function StudentCard({ user, full = false }: { user: User; full?: boolean }) {
+  const cp = creditProfile(user)
+  return (
+    <div className={'student-card' + (full ? ' full' : '')}>
+      <BuildingArt className="sc-watermark" />
+      <div className="sc-header">
+        <span className="sc-crest"><Crest size={full ? 34 : 24} /></span>
+        <div className="sc-school">
+          <strong>{SCHOOL_EN}</strong>
+          <span>{SCHOOL} · 学生证</span>
+        </div>
+        <span className="sc-badge-cert">{user.cert === 'approved' ? '已认证' : user.cert === 'pending' ? '待审核' : '未认证'}</span>
+      </div>
+      <div className="sc-body">
+        <div className="sc-photo">{user.avatar}</div>
+        <div className="sc-info">
+          <strong className="sc-name">{user.name}</strong>
+          <span className="sc-id">UID {user.studentId}</span>
+          <span className="sc-major">{user.faculty}{user.major ? ' · ' + user.major : ''}</span>
+        </div>
+      </div>
+      <div className="sc-credit">
+        <span className="sc-level">{cp.levelLabel}</span>
+        <span>★ {cp.avgRating ?? '—'}</span>
+        <span>{cp.completed} 单</span>
+        <span>准时 {cp.onTimeRate ?? '—'}%</span>
+      </div>
+      <div className="sc-footer">
+        <span>有效期至 {fmtDay(user.validUntil)}</span>
+        <span className="sc-stripe" />
+      </div>
+    </div>
+  )
+}
+
+function MiniCard({ user }: { user: User }) {
+  const cp = creditProfile(user)
+  return (
+    <div className="mini-card">
+      <span className="mc-crest"><Crest size={22} /></span>
+      <div className="mc-info">
+        <strong>{user.name}{user.cert === 'approved' && <i className="verified">✓</i>}</strong>
+        <span>{user.faculty} · {cp.levelLabel}</span>
+      </div>
+      <span className="mc-credit">★ {cp.avgRating ?? '—'} · {cp.completed} 单</span>
+    </div>
+  )
+}
+
 // ===== 大厅 =====
-function Hall({ state, onOpen, onView }: any) {
+function Hall({ state, currentUser, onOpen, onView }: any) {
   const [filter, setFilter] = useState<string>('全部')
   const [query, setQuery] = useState('')
   const open = state.tasks.filter((t: Task) => t.status === 'open' && time(t.due) > time(state.now))
@@ -199,18 +247,20 @@ function Hall({ state, onOpen, onView }: any) {
     <>
       {pageHead('A LITTLE HELP, A BETTER CAMPUS', '今天，也顺路帮个忙。', '从驿站到宿舍，从食堂到自习室，让同校的善意顺路抵达。', <Btn onClick={() => onView('publish')}><Icon name="plus" size={17} /> 发布任务</Btn>)}
 
+      <MiniCard user={currentUser} />
+
       <section className="hero">
         <div>
-          <span className="hero-tag">同校互助 · 安心托付</span>
+          <span className="hero-tag">港大互助 · 安心托付</span>
           <h2>你的举手之劳，<br />是另一个人的刚刚好。</h2>
-          <p>发一个小任务，遇见顺路的同学。<br />身份有核验，交付有记录，每一份付出都有回应。</p>
+          <p>发一个小任务，遇见顺路的同学。<br />学生卡有核验，交付有记录，每一份付出都有回应。</p>
           <div className="hero-trust">
-            <span><Icon name="shield" size={14} /> 双证核验</span>
+            <span><Icon name="shield" size={14} /> 学生卡核验</span>
             <span><Icon name="wallet" size={14} /> 先付款后结算</span>
             <span><Icon name="check" size={14} /> 信用可积累</span>
           </div>
         </div>
-        <HeroArt />
+        <BuildingArt className="hero-building" />
       </section>
 
       <div className="stats">
@@ -239,7 +289,7 @@ function Hall({ state, onOpen, onView }: any) {
           <div className="panel">
             <h3>每一次互助，都有保障</h3>
             <div className="trust-list">
-              <div className="trust-item"><Icon name="shield" /><div><strong>同校身份，双重核验</strong><p>学生证 + 可查验学籍证明<br />报告过期暂停接新单</p></div></div>
+              <div className="trust-item"><Icon name="shield" /><div><strong>港大学生卡，身份核验</strong><p>学生卡实名认证<br />过期需续期重新审核</p></div></div>
               <div className="trust-item"><Icon name="wallet" /><div><strong>资金有状态，付出有回报</strong><p>发单预付，交付留证<br />确认收货后结算给接单者</p></div></div>
               <div className="trust-item"><Icon name="chat" /><div><strong>遇到问题，平台来协调</strong><p>纠纷期间暂停结算<br />双方证据留存、处理可追溯</p></div></div>
             </div>
@@ -247,7 +297,7 @@ function Hall({ state, onOpen, onView }: any) {
           <div className="callout">
             <h3><Icon name="grad" size={18} /> 信用，由履约积累</h3>
             <p>不做随意的加减分公式。你的信用画像，来自真实完成的每一单、每一次准时交付、每一条评价。</p>
-            <a onClick={() => onView('wallet')}>查看信用画像 <Icon name="arrow" size={14} /></a>
+            <a onClick={() => onView('card')}>查看信用画像 <Icon name="arrow" size={14} /></a>
           </div>
         </aside>
       </div>
@@ -295,28 +345,106 @@ function TaskCard({ task, state, onOpen }: { task: Task; state: AppState; onOpen
 }
 
 // ===== 发布 =====
+function LocationPicker({ lat, lng, onPick }: { lat: number; lng: number; onPick: (lat: number, lng: number) => void }) {
+  const mapRef = useRef<HTMLDivElement>(null)
+  const mapInst = useRef<L.Map | null>(null)
+  const markerRef = useRef<L.CircleMarker | null>(null)
+
+  useEffect(() => {
+    if (!mapRef.current || mapInst.current) return
+    const map = L.map(mapRef.current, { scrollWheelZoom: false }).setView([22.284, 114.1363], 16)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map)
+    map.on('click', (e) => onPick(e.latlng.lat, e.latlng.lng))
+    mapInst.current = map
+    return () => {
+      map.remove()
+      mapInst.current = null
+      markerRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const map = mapInst.current
+    if (!map) return
+    if (markerRef.current) markerRef.current.remove()
+    markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: '#0b4f3a', fillColor: '#c9a227', fillOpacity: 1, weight: 2 }).addTo(map)
+    map.setView([lat, lng], 16)
+  }, [lat, lng])
+
+  return <div ref={mapRef} className="map-box" />
+}
+
 function Publish({ state, currentUser, dispatch, onOpen, onView, setModal }: any) {
   const err = eligibility(currentUser, state.now)
+  const [fromName, setFromName] = useState('')
+  const [toName, setToName] = useState('')
+  const [fromPos, setFromPos] = useState({ lat: 22.2847, lng: 114.1354 })
+  const [toPos, setToPos] = useState({ lat: 22.2837, lng: 114.1376 })
+
+  const pickLandmark = (which: 'from' | 'to', lm: { name: string; lat: number; lng: number }) => {
+    if (which === 'from') {
+      setFromName(lm.name)
+      setFromPos({ lat: lm.lat, lng: lm.lng })
+    } else {
+      setToName(lm.name)
+      setToPos({ lat: lm.lat, lng: lm.lng })
+    }
+  }
+
   return (
     <>
-      {pageHead('POST A LITTLE HELP', '把小事，交给顺路的同学。', '信息写清楚，沟通少一点，互助更安心。')}
-      {err && <div className="notice">{err}。<a onClick={() => onView('identity')}>前往认证 →</a></div>}
-      <form className="publish-form" onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); const n = dispatch('publish', '', { kind: d.get('kind'), title: d.get('title'), from: d.get('from'), to: d.get('to'), fee: Math.round(Number(d.get('fee')) * 100), budget: Math.round(Number(d.get('budget')) * 100), value: Math.round(Number(d.get('value')) * 100), due: d.get('due') + ':00+08:00', note: d.get('note'), agreement: !!d.get('agreement') }); if (n) onOpen('t' + (state.seq - 1)); }}>
+      {pageHead('POST A LITTLE HELP', '把小事，交给顺路的同学。', '在地图上选好地点，信息写清楚，互助更安心。')}
+      {err && <div className="notice">{err}。<a onClick={() => onView('card')}>前往认证 →</a></div>}
+      <form className="publish-form" onSubmit={(e) => {
+        e.preventDefault()
+        const d = new FormData(e.currentTarget)
+        const n: any = dispatch('publish', '', {
+          kind: d.get('kind'),
+          title: d.get('title'),
+          from: fromName || d.get('from'),
+          to: toName || d.get('to'),
+          fromLat: fromPos.lat,
+          fromLng: fromPos.lng,
+          toLat: toPos.lat,
+          toLng: toPos.lng,
+          fee: Math.round(Number(d.get('fee')) * 100),
+          budget: Math.round(Number(d.get('budget')) * 100),
+          value: Math.round(Number(d.get('value')) * 100),
+          due: d.get('due') + ':00+08:00',
+          note: d.get('note'),
+          agreement: !!d.get('agreement'),
+        })
+        if (n?.id) onOpen(n.id)
+      }}>
         <div className="form-layout">
           <div className="panel">
             <h3>这次想找什么帮助？</h3>
             <p className="muted">提交后将模拟支付并发布到大厅。请只填写虚构的演示信息。</p>
             <div className="form-grid">
-              <label className="field full">任务标题<input name="title" required maxLength={60} placeholder="例如：帮取一个小包裹，送到南苑楼下" /></label>
+              <label className="field full">任务标题<input name="title" required maxLength={60} placeholder="例如：帮取一个小包裹，送到图书馆" /></label>
               <label className="field">任务类型<select name="kind">{['快递代取', '餐食代买', '打印代取', '校内送物', '占座'].map((k) => <option key={k}>{k}</option>)}</select></label>
               <label className="field">截止时间<input name="due" type="datetime-local" defaultValue={state.now.slice(0, 10) + 'T18:00'} required /></label>
-              <label className="field">从哪里取<input name="from" required maxLength={60} placeholder="菜鸟驿站" /></label>
-              <label className="field">送到哪里<input name="to" required maxLength={60} placeholder="南苑 3 栋楼下（公开地点）" /></label>
+
+              <div className="field full">
+                <span>从哪里取（点地标或点地图）</span>
+                <input name="from" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="港铁香港大学站" required maxLength={60} />
+                <LocationPicker lat={fromPos.lat} lng={fromPos.lng} onPick={(lat, lng) => setFromPos({ lat, lng })} />
+                <div className="landmark-row">{LANDMARKS.map((lm) => <button key={lm.name} type="button" className="chip" onClick={() => pickLandmark('from', lm)}>{lm.name}</button>)}</div>
+              </div>
+
+              <div className="field full">
+                <span>送到哪里（点地标或点地图）</span>
+                <input name="to" value={toName} onChange={(e) => setToName(e.target.value)} placeholder="主图书馆" required maxLength={60} />
+                <LocationPicker lat={toPos.lat} lng={toPos.lng} onPick={(lat, lng) => setToPos({ lat, lng })} />
+                <div className="landmark-row">{LANDMARKS.map((lm) => <button key={lm.name} type="button" className="chip" onClick={() => pickLandmark('to', lm)}>{lm.name}</button>)}</div>
+              </div>
+
               <label className="field">跑腿报酬（元）<input name="fee" type="number" step="0.01" min="1" max="1000" defaultValue="5" required /></label>
               <label className="field">物品申报价值（元）<input name="value" type="number" step="0.01" min="0" max="10000" defaultValue="30" required /></label>
               <label className="field full">代买商品预算（元，其他任务填 0）<input name="budget" type="number" step="0.01" min="0" max="10000" defaultValue="0" required /></label>
-              <label className="field full">补充说明<textarea name="note" maxLength={400} placeholder="物品大小、是否上楼、商品替换要求等。请勿填写真实宿舍号或取件码。" /></label>
-              <label className="check field full"><input type="checkbox" name="agreement" /><span>如涉及大额物品（≥¥500），我已阅读并确认 <button type="button" onClick={() => setModal(agreementModal())}>风险与责任协议</button>。双方确认后方可接单。</span></label>
+              <label className="field full">补充说明<textarea name="note" maxLength={400} placeholder="物品大小、是否上楼、商品替换要求等。" /></label>
+              <label className="check field full"><input type="checkbox" name="agreement" /><span>如涉及大额物品（≥¥500），我已阅读并确认 <button type="button" onClick={() => setModal(agreementModal())}>风险与责任协议</button>。</span></label>
             </div>
           </div>
           <aside>
@@ -360,73 +488,82 @@ function Orders({ state, onOpen }: any) {
 }
 
 // ===== 认证 =====
-function Identity({ state, currentUser, dispatch, onView }: any) {
-  const err = eligibility(currentUser, state.now)
-  return (
-    <>
-      {pageHead('VERIFIED ON CAMPUS', '先认识，再放心托付。', '学生证 + 可查验学籍证明，双重核验你的同校身份。')}
-      <div className={'notice ' + (!err ? 'green' : '')}>{!err ? '双证认证有效 · 可以接单' : err}。报告过期不扣信用，已有订单和资金仍可处理。</div>
-      <div className="two-col">
-        <div className="cert-card"><Icon name="user" size={28} /><h3>01 / 学生证</h3><p>姓名、学校、学号信息一致<br />本页只使用合成材料，不接收真实证件。</p><Badge>{currentUser.cert === 'pending' ? '待审核' : '合成学生证示例'}</Badge></div>
-        <div className="cert-card"><Icon name="shield" size={28} /><h3>02 / 可查验学籍证明</h3><p>有效期至 {fmtDay(currentUser.validUntil)}<br />真实业务需通过官方查验渠道核对。</p><Badge tone={time(state.now) >= time(currentUser.validUntil) ? 'red' : ''}>{time(state.now) >= time(currentUser.validUntil) ? '报告已过期' : '报告在有效期内'}</Badge></div>
-      </div>
-      <div className="panel">
-        <h3>提交或更新认证</h3>
-        <p className="muted">体验流程：选择两份合成材料 → 提交 → 切换管理员审核 → 恢复接单。</p>
-        <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('submitCert', '', { card: !!d.get('card'), report: !!d.get('report') }); }}>
-          <label className="check"><input type="checkbox" name="card" required />选择合成学生证：{currentUser.name} / {SCHOOL}</label>
-          <label className="check"><input type="checkbox" name="report" required />选择可查验学籍报告示例：在籍 / 有效期延长 180 天</label>
-          <div className="actions">
-            <Btn disabled={currentUser.cert === 'pending'}>{currentUser.cert === 'pending' ? '已提交，等待管理员审核' : '提交双证示例'}</Btn>
-            <Btn kind="secondary" onClick={() => onView('orders')}>处理已有订单</Btn>
-          </div>
-        </form>
-      </div>
-    </>
-  )
-}
-
-// ===== 信用账户 =====
-function Wallet({ state, currentUser, onOpen }: any) {
+function Card({ state, currentUser, dispatch, onOpen, onView }: any) {
   const cp = creditProfile(currentUser)
+  const err = eligibility(currentUser, state.now)
   const ledger = state.ledger.filter((l: any) => l.user === currentUser.id)
   const earned = ledger.filter((l: any) => l.type === '跑腿收入').reduce((a: number, l: any) => a + l.amount, 0)
   const returned = ledger.filter((l: any) => l.type === '垫付款返还').reduce((a: number, l: any) => a + l.amount, 0)
   return (
     <>
-      {pageHead('TRUST GROWS WITH EVERY TASK', '靠谱，会被看见。', '每一笔履约与资金变动都有记录，信用由真实完成的任务积累。')}
+      {pageHead('MY STUDENT CARD', '我的学生卡', '一张卡，既是港大身份，也是信用名片。')}
+
+      <div className="card-hero">
+        <StudentCard user={currentUser} full />
+        <div className="card-side">
+          <div className={'notice ' + (!err ? 'green' : '')}>{!err ? '学生卡已认证 · 可以接单' : err}。学生卡过期不扣信用，已有订单和资金仍可处理。</div>
+          <div className="panel">
+            <h3>学生卡认证</h3>
+            <p className="muted">港大学生卡通过管理员审核后，即可发布与接单。演示使用合成信息，不接收真实证件。</p>
+            {currentUser.cert === 'pending' ? (
+              <p className="note">已提交，等待管理员审核。可在右上角切换「校园管理员」审核。</p>
+            ) : (
+              <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('submitCert', '', { card: !!d.get('card') }); }}>
+                <label className="check"><input type="checkbox" name="card" required />确认学生卡信息：{currentUser.name} · {currentUser.studentId} · {currentUser.faculty}{currentUser.major ? ' · ' + currentUser.major : ''}</label>
+                <div className="actions">
+                  <Btn disabled={currentUser.cert === 'approved'}>{currentUser.cert === 'approved' ? '已认证' : '提交审核'}</Btn>
+                  <Btn kind="secondary" onClick={() => onView('orders')}>处理已有订单</Btn>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="stats">
         {stat('累计跑腿收入', money(earned), 'wallet')}
-        {stat('已完成接单', cp.completed, 'check')}
+        {stat('完成接单', cp.completed, 'check')}
         {stat('已返还垫付款', money(returned), 'wallet')}
       </div>
+
+      <div className="panel">
+        <h3>收到的评价 <span className="muted">作为送货员被同学评价</span></h3>
+        {currentUser.reviews.length > 0 ? (
+          <div className="deliverer-reviews">
+            {currentUser.reviews.map((r: any, i: number) => (
+              <div key={i} className="review">
+                <b>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.fromName}</b>
+                <p>{r.text}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">还没有收到评价，完成几单后同学们会给你留言。</p>
+        )}
+      </div>
+
       <div className="two-col">
         <div className="panel">
-          <h3>我的信用画像</h3>
+          <h3>信用画像</h3>
           <div className="summary-row"><span>完成接单</span><b>{cp.completed} 单</b></div>
           <div className="summary-row"><span>准时率</span><b>{cp.onTimeRate === null ? '记录不足' : cp.onTimeRate + '%（' + currentUser.onTime + '/' + currentUser.completed + '）'}</b></div>
           <div className="summary-row"><span>平均评分</span><b>{cp.avgRating === null ? '暂无评价' : cp.avgRating + ' 星（' + currentUser.ratingCount + ' 条）'}</b></div>
           <div className="summary-row"><span>信用阶段</span><b>{cp.levelLabel}</b></div>
-          <p className="note">认证过期不扣分；申诉不直接认定违约。信用由客观履约事件构成，不做随意加减分。</p>
+          <p className="note">学生卡过期不扣分；申诉不直接认定违约。信用由客观履约事件构成，不做随意加减分。</p>
         </div>
-        <div className="callout">
-          <h3>你付出的时间，值得被尊重</h3>
-          <p>确认收货后记入跑腿收入。代买垫付款返还单独列示，不把商品款算成你的收益。</p>
-          <p>雏形不接入真实提现，所有金额均为模拟账务。</p>
-        </div>
-      </div>
-      <div className="panel">
-        <h3>账户流水 <span className="muted">仅当前演示身份</span></h3>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>订单</th><th>变动类型</th><th>金额</th><th>时间</th></tr></thead>
-            <tbody>
-              {ledger.slice().reverse().map((l: any) => (
-                <tr key={l.task + l.at}><td><a onClick={() => onOpen(l.task)}>{l.task.toUpperCase()} ↗</a></td><td>{l.type}</td><td>+ ¥{money(l.amount)}</td><td>{fmtTime(l.at)}</td></tr>
-              ))}
-              {ledger.length === 0 && <tr><td colSpan={4}>完成一笔订单后，这里会显示模拟结算与退款流水。</td></tr>}
-            </tbody>
-          </table>
+        <div className="panel">
+          <h3>账户流水 <span className="muted">仅当前演示身份</span></h3>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>订单</th><th>类型</th><th>金额</th></tr></thead>
+              <tbody>
+                {ledger.slice().reverse().map((l: any) => (
+                  <tr key={l.task + l.at}><td><a onClick={() => onOpen(l.task)}>{l.task.toUpperCase()} ↗</a></td><td>{l.type}</td><td>+ ¥{money(l.amount)}</td></tr>
+                ))}
+                {ledger.length === 0 && <tr><td colSpan={3}>完成一笔订单后，这里会显示模拟结算与退款流水。</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </>
@@ -449,6 +586,8 @@ function Admin({ state, dispatch, setNow, onOpen }: any) {
   }
   const pending = state.users.filter((u: User) => u.cert === 'pending')
   const disputes = state.tasks.filter((t: Task) => t.status === 'disputed')
+  const reports = state.reports
+  const deliverers = state.users.filter((u: User) => u.id !== 'admin')
   return (
     <>
       {pageHead('CAMPUS SUPPORT', '每一份信任，都认真回应。', '审核与裁决均为演示操作，不会查验真实身份或移动真实资金。')}
@@ -474,6 +613,43 @@ function Admin({ state, dispatch, setNow, onOpen }: any) {
         ))}
         {disputes.length === 0 && <p className="muted">当前没有纠纷。订单参与者可在履约中或待收货阶段发起申诉。</p>}
       </div>
+      <div className="panel">
+        <h3>举报信息 <span className="count">{reports.length}</span></h3>
+        {reports.slice().reverse().map((r: any) => (
+          <div key={r.id} className="summary-row">
+            <div>
+              <b>{r.targetName}</b> 被举报 · 举报人 {r.fromName}
+              <p className="muted">{r.reason}</p>
+            </div>
+            {r.status === 'pending'
+              ? <Btn onClick={() => dispatch('resolveReport', r.id)}>标记已处理</Btn>
+              : <Badge tone="green">已处理</Badge>}
+          </div>
+        ))}
+        {reports.length === 0 && <p className="muted">暂无举报信息。</p>}
+      </div>
+      <div className="panel">
+        <h3>注册送货员 <span className="count">{deliverers.length}</span></h3>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>信用</th><th>认证</th></tr></thead>
+            <tbody>
+              {deliverers.map((u: User) => {
+                const cp = creditProfile(u)
+                return (
+                  <tr key={u.id}>
+                    <td><b>{u.name}</b></td>
+                    <td>{u.studentId}</td>
+                    <td>{u.faculty}</td>
+                    <td>{cp.levelLabel}</td>
+                    <td>{u.cert === 'approved' ? <Badge tone="green">已认证</Badge> : u.cert === 'pending' ? <Badge tone="amber">待审核</Badge> : <Badge tone="red">未认证</Badge>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </>
   )
 }
@@ -493,7 +669,7 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
   let actions: React.ReactNode = null
   if (task.status === 'open') actions = isOwner
     ? <Btn kind="secondary" onClick={() => setModal(confirmModal('取消这份未接单任务？', `¥${money(task.fee + task.budget)} 模拟预付款将全部退回。`, () => dispatch('cancel', task.id)))}>取消任务并退款</Btn>
-    : currentUser.id === 'admin' ? null : (err ? <div className="notice">{err} · <a onClick={onView ? () => { onClose(); onView('identity'); } : undefined}>去认证</a></div> : <Btn onClick={() => setModal(acceptModal(task, dispatch))}>我来帮忙 · 接下任务</Btn>)
+    : currentUser.id === 'admin' ? null : (err ? <div className="notice">{err} · <a onClick={onView ? () => { onClose(); onView('card'); } : undefined}>去认证</a></div> : <Btn onClick={() => setModal(acceptModal(task, dispatch))}>我来帮忙 · 接下任务</Btn>)
   if (task.status === 'accepted' && isRunner) actions = <Btn onClick={() => setModal(deliverModal(task, dispatch))}>提交交付凭证</Btn>
   if (task.status === 'delivered' && isOwner) actions = <Btn onClick={() => setModal(confirmModal('确认收到物品并结算？', `接单者跑腿收入 ¥${money(task.fee)} · 返还垫付款 ¥${money(task.actual)} · 退回预算差额 ¥${money(task.budget - task.actual)}`, () => dispatch('confirm', task.id)))}>确认收货并结算</Btn>
   if (['accepted', 'delivered'].includes(task.status) && (isOwner || isRunner)) actions = <Btn kind="secondary" onClick={() => setModal(disputeModal(task, dispatch))}>遇到问题 · 发起申诉</Btn>
@@ -567,8 +743,34 @@ function TaskDetail({ task, state, currentUser, dispatch, setModal, onClose, onV
             </div>
             <div className="panel">
               <h3>本单同学</h3>
-              <div className="summary-row"><span>发布者</span><b>{owner.name}</b></div>
-              <div className="summary-row"><span>接单者</span><b>{runner ? runner.name : '等待同校同学'}</b></div>
+              <div className="sheet-people">
+                <MiniCard user={owner} />
+                {runner ? (
+                  <>
+                    <MiniCard user={runner} />
+                    {currentUser.id !== runner.id && (
+                      <div className="deliverer-actions">
+                        <Btn kind="secondary" onClick={() => setModal(reviewDelivererModal(runner, dispatch))}>评价 TA</Btn>
+                        <Btn kind="secondary" onClick={() => setModal(reportDelivererModal(runner, dispatch))}>举报</Btn>
+                        <Btn kind="secondary" onClick={() => setModal(blockDelivererModal(runner, dispatch, currentUser))}>
+                          {currentUser.blocked.includes(runner.id) ? '已拉黑' : '拉黑'}
+                        </Btn>
+                      </div>
+                    )}
+                    {runner.reviews.length > 0 && (
+                      <div className="deliverer-reviews">
+                        <h4>大家对 TA 的评价（{runner.reviews.length}）</h4>
+                        {runner.reviews.map((r: any, i: number) => (
+                          <div key={i} className="review">
+                            <b>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.fromName}</b>
+                            <p>{r.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : <p className="muted">等待同校同学接单</p>}
+              </div>
               <p className="muted">材料对其他同学不可见。认证与有效期由平台核验。</p>
             </div>
           </aside>
@@ -686,6 +888,44 @@ function reviewModal(task: Task, dispatch: any) {
   </>
 }
 
+function reviewDelivererModal(target: User, dispatch: any) {
+  return <>
+    <button className="modal-close">×</button>
+    <h2>评价 {target.name}</h2>
+    <p>你的评价会出现在 TA 的学生卡信用档案里，帮助其他同学判断。</p>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('reviewDeliverer', target.id, { stars: Number(d.get('stars')), text: d.get('text') }); }}>
+      <label className="field">服务评分<select name="stars"><option value="5">★★★★★ 很满意</option><option value="4">★★★★ 满意</option><option value="3">★★★ 一般</option><option value="2">★★ 不太满意</option><option value="1">★ 不满意</option></select></label>
+      <label className="field">评价<textarea name="text" maxLength={200} placeholder="准时、沟通、物品完好，都可以说一说" /></label>
+      <div className="actions"><Btn>提交评价</Btn></div>
+    </form>
+  </>
+}
+
+function reportDelivererModal(target: User, dispatch: any) {
+  return <>
+    <button className="modal-close">×</button>
+    <h2>举报 {target.name}</h2>
+    <p>请说明举报原因，校园管理员会核实处理。恶意举报也会被记录。</p>
+    <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); dispatch('reportDeliverer', target.id, { reason: d.get('reason') }); }}>
+      <label className="field">举报原因<textarea name="reason" required maxLength={300} placeholder="例如：交付物品破损、虚假接单、态度恶劣…" /></label>
+      <div className="actions"><Btn kind="soft">提交举报</Btn></div>
+    </form>
+  </>
+}
+
+function blockDelivererModal(target: User, dispatch: any, currentUser: User) {
+  const already = currentUser.blocked.includes(target.id)
+  return <>
+    <button className="modal-close">×</button>
+    <h2>{already ? '取消拉黑' : '拉黑'} {target.name}？</h2>
+    <p>{already ? '取消拉黑后，你将重新看到 TA 发布的任务。' : '拉黑后，你将不再看到 TA 发布的任务，TA 也无法接你的单。'}</p>
+    <div className="actions">
+      <Btn kind="soft" onClick={() => dispatch('blockDeliverer', target.id)}>{already ? '取消拉黑' : '确认拉黑'}</Btn>
+      <Btn kind="secondary">再想想</Btn>
+    </div>
+  </>
+}
+
 function resetModal(reset: () => void) {
   return <>
     <button className="modal-close">×</button>
@@ -693,40 +933,4 @@ function resetModal(reset: () => void) {
     <p>清除本浏览器中的演示订单与流水，恢复初始示例。此操作不涉及真实交易。</p>
     <div className="actions"><Btn onClick={reset}>确认重置</Btn><Btn kind="secondary">保留当前进度</Btn></div>
   </>
-}
-
-// ===== Hero 插画（原创 SVG）=====
-function HeroArt() {
-  return (
-    <svg className="hero-art" viewBox="0 0 430 210" fill="none" aria-hidden="true">
-      <ellipse cx="233" cy="185" rx="163" ry="12" fill="#e0e7ff" />
-      <path d="M37 145C70 90 98 171 151 140s59-95 113-58 89 33 124-22" stroke="#a5b4fc" strokeWidth="2" strokeDasharray="5 7" />
-      <g transform="translate(77,90) rotate(-10)">
-        <rect width="91" height="75" rx="7" fill="#fde68a" />
-        <path d="M0 25h91M45 0v75" stroke="#d4b464" strokeWidth="2" />
-        <path d="M34 0h21v30l-11-6-10 6z" fill="#fef3c7" />
-        <path d="M63 51h17m-17 8h12" stroke="#b39d56" strokeWidth="2" />
-      </g>
-      <g transform="translate(226,37) rotate(12)">
-        <rect width="85" height="131" rx="14" fill="#3730a3" />
-        <rect x="7" y="8" width="71" height="114" rx="9" fill="#eef2ff" />
-        <rect x="28" y="12" width="30" height="5" rx="3" fill="#3730a3" />
-        <circle cx="43" cy="48" r="18" fill="#c7d2fe" />
-        <path d="M34 48l7 7 13-15" stroke="#4f46e5" strokeWidth="3" />
-        <rect x="18" y="78" width="50" height="5" rx="2" fill="#dde6d0" />
-        <rect x="25" y="89" width="36" height="4" rx="2" fill="#e8edde" />
-        <rect x="19" y="104" width="48" height="10" rx="4" fill="#a5b4fc" />
-      </g>
-      <g transform="translate(332,117)">
-        <path d="M0 5h38l-4 53H5z" fill="#fef3c7" />
-        <path d="M-2 5h42V0H-2z" fill="#4f46e5" />
-        <path d="M7 24h25v18H7z" fill="#c7d2fe" />
-        <path d="M15-4c-9-8 8-10 0-19m13 20c-9-8 8-10 0-19" stroke="#a5b4fc" strokeWidth="2" />
-      </g>
-      <circle cx="187" cy="33" r="18" fill="#f8fafc" />
-      <path d="M179 33l5 5 11-12" stroke="#4f46e5" strokeWidth="2" />
-      <path d="M64 48l8 4-7 11-2-8-9-2z" fill="#818cf8" />
-      <path d="M375 35v12m-6-6h12" stroke="#818cf8" strokeWidth="2" />
-    </svg>
-  )
 }

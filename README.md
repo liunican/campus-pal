@@ -1,32 +1,98 @@
-# React + TypeScript + Vite
+# 校园帮 CampusPal · 香港大学校园跑腿互助平台
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+一个面向香港大学学生的 C2C 互助跑腿产品演示。发布任务、接单跑腿、积累信用，用「学生卡名片」和「客观履约信用」解决校园互助中「缺乏可信平台」的核心痛点。
 
-Currently, two official plugins are available:
+> **在线体验**：https://liunican.github.io/campus-pal/
+>
+> 本作品为交互演示，身份、材料和资金均为模拟数据，仅保存在当前浏览器，不发生真实交易。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 一、产品定位与差异化
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 设计点 | 说明 |
+|--------|------|
+| **学生卡名片** | 核心视觉灵魂。一张像真实港大学生证的可视化卡片，承载「身份」与「信用」两重信息，贯穿「我的卡」页、大厅顶部、任务详情三处 |
+| **客观履约信用** | 不做「初始分 + 好评加分」的黑箱公式，而是由「完成单量 / 准时率 / 评分 / 责任取消」等可解释的客观事件构成信用画像 |
+| **资金托管** | 先付款、确认收货后结算；代买任务支持预算拆分、垫付款返还与差额退款，资金守恒 |
+| **地图选点** | 发布任务时用 Leaflet + OpenStreetMap 在港大校园地图上选点 |
+| **港大视觉** | 深绿 + 暖金的学院风配色，自绘盾形校徽与本部大楼剪影 |
 
-## Expanding the Oxlint configuration
+## 二、核心功能
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+1. **任务大厅** —— 浏览/搜索/筛选任务，顶部展示当前用户迷你学生卡
+2. **发布任务** —— 表单 + 地图选点（取件地/送达地），支持快递代取、餐食代买、打印代取、校内送物、占座
+3. **接单跑腿** —— 任务状态流转：等待接单 → 履约中 → 待确认收货 → 已完成
+4. **我的订单** —— 我发布的 / 我接到的，含取消、申诉、评价
+5. **我的卡** —— 完整学生卡 + 信用画像 + 收到的评价 + 账户流水（合并了认证与信用账户）
+6. **评论 / 举报 / 拉黑** —— 对送货员可评价、举报、拉黑；评价展示在对方的信用档案中
+7. **管理端** —— 学生卡审核、纠纷裁决、举报处理、注册送货员一览
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## 三、技术栈
+
+- **前端**：React 19 + TypeScript + Vite
+- **地图**：Leaflet 1.9 + OpenStreetMap 瓦片
+- **状态**：React Hooks + localStorage 持久化
+- **部署**：GitHub Pages（GitHub Actions 自动构建部署）
+
+## 四、项目结构
+
+```
+├── index.html              # 入口
+├── docs/
+│   └── spec-hku-redesign.md  # 重设计规格文档
+├── .github/workflows/
+│   └── deploy.yml            # 自动部署到 GitHub Pages
+└── src/
+    ├── domain.ts             # 领域模型：类型、认证/订单状态机、资金守恒、信用、命令分发
+    ├── store.ts              # React 状态管理（localStorage 持久化 + 命令分发）
+    ├── icons.tsx             # SVG 图标 + 校徽 + 地标建筑剪影
+    ├── App.tsx               # 主应用 + 全部页面组件
+    ├── App.css               # 样式（深绿金主题 + 响应式）
+    └── index.css             # 基础 reset
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## 五、本地运行
+
+```bash
+npm install        # 安装依赖
+npm run dev        # 启动开发服务器（默认 http://localhost:5173）
+npm run build      # 类型检查 + 生产构建
+npm run preview    # 预览生产构建
+```
+
+## 六、部署
+
+- 仓库连接 GitHub Pages（Source 选择 **GitHub Actions**）
+- 每次 push 到 `main` 分支，`.github/workflows/deploy.yml` 会自动构建并部署
+- 站点地址固定为 `https://<用户名>.github.io/campus-pal/`
+
+## 七、演示说明
+
+右上角下拉可切换演示身份：
+
+| 身份 | 用途 |
+|------|------|
+| 陈默 · 接单者 | 默认身份，在大厅接单、提交交付凭证 |
+| 林晚 · 发布者 | 确认收货、查看差额退款 |
+| 周扬 · 认证过期 | 体验学生卡过期拦截接单 |
+| 许宁 · 即将毕业 | 体验毕业清算提醒 |
+| 校园管理员 | 审核学生卡、处理纠纷与举报、查看注册送货员 |
+
+**建议体验流程**：陈同学接单 → 提交交付凭证 → 切林同学确认收货 → 在「我的卡」查看收入与评价；再切管理员查看举报与送货员列表。
+
+## 八、数据模型（领域设计）
+
+- **认证状态机**：未认证 → 待审核 → 已认证 → 已过期
+- **订单状态机**：等待接单 → 履约中 → 待确认收货 → 已完成 / 纠纷处理中 / 已退款
+- **资金守恒**：预付 = 跑腿报酬 + 代买预算；确认后拆分为「跑腿收入 + 垫付款返还 + 预算差额退款」，分毫不差
+- **信用画像**：完成单量、准时率、平均评分、责任取消（客观可解释，非公式）
+- **金额单位**：整数「分」，避免浮点误差
+
+## 九、真实能力边界
+
+本作品为**前端交互演示**，明确不包含：
+- 真实登录、学籍联网查验、真实证件/照片上传
+- 真实支付、提现、跨用户数据同步
+
+角色权限与订单校验用于演示，真实业务必须在服务端再次执行。正式运营需接入支付机构、实名认证与后端服务。
